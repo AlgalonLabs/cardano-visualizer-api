@@ -1,9 +1,12 @@
 import datetime
 from typing import Optional
+
 from fastapi import APIRouter
-from app.neo4j_connection import neo4j_driver
+
+from app.db.connections import neo4j_driver
 
 router = APIRouter()
+
 
 @router.get("/graph/asset/{asset_id}")
 def get_graph_by_asset(asset_id: str, start_time: Optional[str] = None, end_time: Optional[str] = None):
@@ -30,8 +33,8 @@ def get_graph_by_asset(asset_id: str, start_time: Optional[str] = None, end_time
 
 
 def parse_timestamp(ts: str) -> str:
-    # Assuming the input is in the format 'YYYY-MM-DD'
     return datetime.datetime.strptime(ts, '%Y-%m-%d').isoformat()
+
 
 @router.get("/graph/address/{address}")
 def get_graph_by_address(address: str, start_time: Optional[str] = None, end_time: Optional[str] = None):

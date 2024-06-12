@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.routers import graph
 
 app = FastAPI()
 
-# Add CORS middleware to allow requests from the frontend
 origins = [
     "http://localhost:3000",
 ]
