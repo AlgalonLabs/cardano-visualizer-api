@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime
 
-from app.db.db_neo4j import insert_into_neo4j
+from app.db.connections import connect_postgres
+from app.db.db_neo4j import insert_into_neo4j, clear_neo4j_database
 from app.db.db_postgres import fetch_input_utxos, fetch_output_utxos
 from app.utils.utxo_processor import process_utxos
 
@@ -10,6 +11,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
     start = datetime(2021, 1, 1)
     end = datetime(2021, 1, 7)
+
+    # Clear existing data
+    clear_neo4j_database()
 
     # Iterate over 52 weeks
     for i in range(0, 52):

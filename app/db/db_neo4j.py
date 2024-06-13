@@ -2,6 +2,7 @@ import logging
 from typing import List, Dict, Any
 
 from app.db.connections import connect_neo4j
+from app.models.transactions import ProcessedTransaction
 
 
 def clear_neo4j_database():
@@ -17,38 +18,35 @@ def clear_neo4j_database():
     driver.close()
 
 
-def insert_into_neo4j(utxos: List[Dict[str, Any]], batch_size: int = 100):
+def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int = 1000):
     """
     Insert Addresses, StakeAddresses, and Transactions into Neo4j
 
-    :param utxos: List of UTXOs to insert
+    :param transactions: List of UTXOs to insert
     :param batch_size: Batch size for inserting data
     """
     logging.info("Inserting data into Neo4j...")
     driver = connect_neo4j()
 
     with driver.session() as session:
-        # Clear existing data
-        clear_neo4j_database()
-
         # Create constraints to ensure uniqueness of addresses, transactions, and stake addresses
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (a:Address) REQUIRE a.address IS UNIQUE")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (t:Transaction) REQUIRE t.tx_hash IS UNIQUE")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (s:StakeAddress) REQUIRE s.address IS UNIQUE")
 
         def process_batch(batch_to_process: List[Dict[str, Any]]):
-            for utxo in batch_to_process:
-                input_address = utxo.get("input_address")
-                output_address = utxo.get("output_address")
-                tx_hash = utxo["tx_hash"]
-                output_value = utxo["output_value"]
-                actual_sent = utxo["actual_sent"]
-                timestamp = utxo["timestamp"]
-                asset_policy = utxo.get("asset_policy")
-                asset_name = utxo.get("asset_name")
-                asset_quantity = utxo.get("asset_quantity")
-                input_stake_address = utxo.get("input_stake_address")
-                output_stake_address = utxo.get("output_stake_address")
+            for transaction in batch_to_process:
+                input_address = transaction.get("input_address")
+                output_address = transaction.get("output_address")
+                tx_hash = transaction["tx_hash"]
+                output_value = transaction["output_value"]
+                actual_sent = transaction["actual_sent"]
+                timestamp = transaction["timestamp"]
+                asset_policy = transaction.get("asset_policy")
+                asset_name = transaction.get("asset_name")
+                asset_quantity = transaction.get("asset_quantity")
+                input_stake_address = transaction.get("input_stake_address")
+                output_stake_address = transaction.get("output_stake_address")
                 tx_hash_str = tx_hash.hex()
 
                 logging.debug(f'Inserting transaction: {tx_hash_str}')
@@ -145,10 +143,15 @@ def insert_into_neo4j(utxos: List[Dict[str, Any]], batch_size: int = 100):
                         }
                     )
 
-        for i in range(0, len(utxos), batch_size):
-            logging.info(f"Processing batch {i + 1}/{len(utxos) // batch_size + 1}")
-            batch = utxos[i:i + batch_size]
+        total_batches = (len(transactions) + batch_size - 1) // batch_size  # Calculate total number of batches
+
+        for i in range(total_batches):
+            start_index = i * batch_size
+            end_index = min(start_index + batch_size, len(transactions))
+            batch = transactions[start_index:end_index]
+
+            logging.info(f"Processing batch {i + 1}/{total_batches}")
             process_batch(batch)
-            logging.info(f"Processed {len(batch)} UTXOs")
+            logging.info(f"Processed batch of size {len(batch)}")
 
     driver.close()

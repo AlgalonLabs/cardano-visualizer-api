@@ -1,16 +1,7 @@
 import logging
 from typing import List, Dict, Any
 
-import psycopg2
-
-
-def connect_postgres():
-    return psycopg2.connect(
-        dbname="cexplorer",
-        user="postgres",
-        password="v8hlDV0yMAHHlIurYupj",
-        host="localhost"
-    )
+from app.db.connections import connect_postgres
 
 
 def fetch_input_utxos(start: str, end: str) -> List[Dict[str, Any]]:
