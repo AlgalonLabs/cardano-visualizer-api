@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 
-from app.db.connections import connect_postgres
 from app.db.db_neo4j import insert_into_neo4j, clear_neo4j_database
 from app.db.db_postgres import fetch_input_utxos, fetch_output_utxos
 from app.utils.utxo_processor import process_utxos

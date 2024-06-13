@@ -1,7 +1,11 @@
 import logging
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import List, Optional
+
+from neo4j import Driver
 
 from app.db.connections import connect_neo4j
+from app.models.graph import Edge, GraphData, Node, AddressNode, TransactionNode, StakeAddressNode
 from app.models.transactions import ProcessedTransaction
 
 
@@ -12,13 +16,17 @@ def clear_neo4j_database():
     logging.info("Clearing all data in Neo4j...")
     driver = connect_neo4j()
 
-    with driver.session() as session:
-        session.run("MATCH (n) DETACH DELETE n")
+    try:
+        with driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+            logging.info("Database cleared successfully.")
+    except Exception as e:
+        logging.error(f"Error clearing database: {e}")
+    finally:
+        driver.close()
 
-    driver.close()
 
-
-def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int = 1000):
+def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int = 5000):
     """
     Insert Addresses, StakeAddresses, and Transactions into Neo4j
 
@@ -41,7 +49,7 @@ def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int 
                 tx_hash = transaction["tx_hash"]
                 output_value = transaction["output_value"]
                 actual_sent = transaction["actual_sent"]
-                timestamp = transaction["timestamp"]
+                timestamp: datetime = transaction["timestamp"]
                 asset_policy = transaction.get("asset_policy")
                 asset_name = transaction.get("asset_name")
                 asset_quantity = transaction.get("asset_quantity")
@@ -55,7 +63,7 @@ def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int 
                     MERGE (t:Transaction {tx_hash: $tx_hash})
                     ON CREATE SET t.output_value = $output_value,
                                   t.actual_sent = $actual_sent,
-                                  t.timestamp = $timestamp,
+                                  t.timestamp = datetime($timestamp),
                                   t.asset_policy = $asset_policy,
                                   t.asset_name = $asset_name,
                                   t.asset_quantity = $asset_quantity
@@ -64,7 +72,7 @@ def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int 
                         "tx_hash": tx_hash_str,
                         "output_value": int(output_value),
                         "actual_sent": int(actual_sent),
-                        "timestamp": timestamp,
+                        "timestamp": timestamp.isoformat(),
                         "asset_policy": asset_policy,
                         "asset_name": asset_name,
                         "asset_quantity": int(asset_quantity) if asset_quantity else None
@@ -81,7 +89,7 @@ def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int 
                         """
                         MATCH (a:Address {address: $input_address})
                         MATCH (t:Transaction {tx_hash: $tx_hash})
-                        MERGE (a)-[r:HAS_INPUT_TRANSACTION]->(t)
+                        MERGE (a)-[r:INPUT_TRANSACTION]->(t)
                         """,
                         {
                             "input_address": input_address,
@@ -99,7 +107,7 @@ def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int 
                         """
                         MATCH (b:Address {address: $output_address})
                         MATCH (t:Transaction {tx_hash: $tx_hash})
-                        MERGE (t)-[r:HAS_OUTPUT_TRANSACTION]->(b)
+                        MERGE (t)-[r:OUTPUT_TRANSACTION]->(b)
                         """,
                         {
                             "output_address": output_address,
@@ -155,3 +163,163 @@ def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int 
             logging.info(f"Processed batch of size {len(batch)}")
 
     driver.close()
+
+
+def parse_timestamp(ts: str) -> str:
+    return datetime.datetime.strptime(ts, '%Y-%m-%dT%H:%M:%S').isoformat()
+
+
+def get_graph_by_asset(driver: Driver, asset_id: str, start_time: Optional[str] = None,
+                       end_time: Optional[str] = None) -> GraphData:
+    nodes: List[Node] = []
+    edges: List[Edge] = []
+
+    query = """
+    MATCH (a:Address)-[r:INPUT_TRANSACTION]->(t:Transaction {asset_id: $asset_id})-[s:OUTPUT_TRANSACTION]->(b:Address)
+    """
+    if start_time:
+        query += " WHERE t.timestamp >= datetime($start_time)"
+    if end_time:
+        query += " AND t.timestamp <= datetime($end_time)"
+    query += """
+    RETURN a.address AS from, b.address AS to, t.tx_hash AS tx_hash, t.output_value AS value, t.timestamp AS timestamp,
+           t.asset_policy AS asset_policy, t.asset_name AS asset_name, t.asset_quantity AS asset_quantity
+    """
+
+    params = {'asset_id': asset_id}
+    if start_time:
+        params['start_time'] = parse_timestamp(start_time)
+    if end_time:
+        params['end_time'] = parse_timestamp(end_time)
+
+    with driver.session() as session:
+        result = session.run(query, params)
+        for record in result:
+            from_address = record["from"]
+            to_address = record["to"]
+            tx_hash = record["tx_hash"]
+
+            if not any(node["id"] == from_address for node in nodes):
+                nodes.append(AddressNode(id=from_address, type="Address", label=from_address))
+
+            if not any(node["id"] == tx_hash for node in nodes):
+                nodes.append(TransactionNode(
+                    id=tx_hash, type="Transaction", tx_hash=tx_hash,
+                    timestamp=record["timestamp"].isoformat(), value=record["value"],
+                    asset_policy=record["asset_policy"], asset_name=record["asset_name"],
+                    asset_quantity=record["asset_quantity"]
+                ))
+
+            if not any(node["id"] == to_address for node in nodes):
+                nodes.append(AddressNode(id=to_address, type="Address", label=to_address))
+
+            edges.append(Edge(from_address=from_address, to_address=tx_hash, type="INPUT_TRANSACTION"))
+            edges.append(Edge(from_address=tx_hash, to_address=to_address, type="OUTPUT_TRANSACTION"))
+
+    stake_query = """
+    MATCH (a:Address)-[:STAKE]->(s:StakeAddress)
+    RETURN a.address AS address, s.address AS stake_address
+    """
+
+    with driver.session() as session:
+        result = session.run(stake_query)
+        for record in result:
+            if not any(node["id"] == record["stake_address"] for node in nodes):
+                nodes.append(
+                    StakeAddressNode(id=record["stake_address"], type="StakeAddress", label=record["stake_address"]))
+
+            edges.append(Edge(from_address=record["address"], to_address=record["stake_address"], type="STAKE"))
+
+    return GraphData(nodes=nodes, edges=edges)
+
+
+def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str] = None,
+                         end_time: Optional[str] = None) -> GraphData:
+    nodes: List[Node] = []
+    edges: List[Edge] = []
+
+    query = """
+    MATCH (a:Address {address: $address})-[r:INPUT_TRANSACTION]->(t:Transaction)
+    OPTIONAL MATCH (t)-[s:OUTPUT_TRANSACTION]->(b:Address)
+    RETURN a.address AS from, b.address AS to, t.tx_hash AS tx_hash, t.output_value AS value, t.timestamp AS timestamp,
+           t.asset_policy AS asset_policy, t.asset_name AS asset_name, t.asset_quantity AS asset_quantity
+    UNION
+    MATCH (b:Address)-[r:OUTPUT_TRANSACTION]->(t:Transaction)-[s:INPUT_TRANSACTION]->(a:Address {address: $address})
+    RETURN b.address AS from, a.address AS to, t.tx_hash AS tx_hash, t.output_value AS value, t.timestamp AS timestamp,
+           t.asset_policy AS asset_policy, t.asset_name AS asset_name, t.asset_quantity AS asset_quantity
+    """
+    if start_time or end_time:
+        query = """
+        MATCH (a:Address {address: $address})-[r:INPUT_TRANSACTION]->(t:Transaction)
+        OPTIONAL MATCH (t)-[s:OUTPUT_TRANSACTION]->(b:Address)
+        WHERE
+        """
+        if start_time:
+            query += " t.timestamp >= datetime($start_time)"
+        if start_time and end_time:
+            query += " AND"
+        if end_time:
+            query += " t.timestamp <= datetime($end_time)"
+        query += """
+        RETURN a.address AS from, b.address AS to, t.tx_hash AS tx_hash, t.output_value AS value, t.timestamp AS timestamp,
+               t.asset_policy AS asset_policy, t.asset_name AS asset_name, t.asset_quantity AS asset_quantity
+        UNION
+        MATCH (b:Address)-[r:OUTPUT_TRANSACTION]->(t:Transaction)-[s:INPUT_TRANSACTION]->(a:Address {address: $address})
+        WHERE
+        """
+        if start_time:
+            query += " t.timestamp >= datetime($start_time)"
+        if start_time and end_time:
+            query += " AND"
+        if end_time:
+            query += " t.timestamp <= datetime($end_time)"
+        query += """
+        RETURN b.address AS from, a.address AS to, t.tx_hash AS tx_hash, t.output_value AS value, t.timestamp AS timestamp,
+               t.asset_policy AS asset_policy, t.asset_name AS asset_name, t.asset_quantity AS asset_quantity
+        """
+
+    params = {'address': address}
+    if start_time:
+        params['start_time'] = parse_timestamp(start_time)
+    if end_time:
+        params['end_time'] = parse_timestamp(end_time)
+
+    with driver.session() as session:
+        result = session.run(query, params)
+        for record in result:
+            from_address = record["from"]
+            to_address = record["to"]
+            tx_hash = record["tx_hash"]
+
+            if not any(node["id"] == from_address for node in nodes):
+                nodes.append(AddressNode(id=from_address, type="Address", label=from_address))
+
+            if not any(node["id"] == tx_hash for node in nodes):
+                nodes.append(TransactionNode(
+                    id=tx_hash, type="Transaction", tx_hash=tx_hash,
+                    timestamp=record["timestamp"].isoformat(), value=record["value"],
+                    asset_policy=record["asset_policy"], asset_name=record["asset_name"],
+                    asset_quantity=record["asset_quantity"]
+                ))
+
+            if not any(node["id"] == to_address for node in nodes):
+                nodes.append(AddressNode(id=to_address, type="Address", label=to_address))
+
+            edges.append(Edge(from_address=from_address, to_address=tx_hash, type="INPUT_TRANSACTION"))
+            edges.append(Edge(from_address=tx_hash, to_address=to_address, type="OUTPUT_TRANSACTION"))
+
+    stake_query = """
+    MATCH (a:Address {address: $address})-[:STAKE]->(s:StakeAddress)
+    RETURN a.address AS address, s.address AS stake_address
+    """
+
+    with driver.session() as session:
+        result = session.run(stake_query, params)
+        for record in result:
+            if not any(node["id"] == record["stake_address"] for node in nodes):
+                nodes.append(
+                    StakeAddressNode(id=record["stake_address"], type="StakeAddress", label=record["stake_address"]))
+
+            edges.append(Edge(from_address=record["address"], to_address=record["stake_address"], type="STAKE"))
+
+    return GraphData(nodes=nodes, edges=edges)

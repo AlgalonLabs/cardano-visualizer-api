@@ -1,3 +1,4 @@
+from datetime import datetime
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -13,7 +14,7 @@ class InputUTXO:
 class OutputUTXO:
     address: str
     value: int
-    timestamp: str
+    timestamp: datetime
     asset_policy: Optional[str] = None
     asset_name: Optional[str] = None
     asset_quantity: Optional[int] = None
@@ -35,7 +36,7 @@ class ProcessedTransaction:
     output_stake_address: Optional[str]
     output_value: int
     actual_sent: int
-    timestamp: str
+    timestamp: datetime
     asset_policy: Optional[str]
     asset_name: Optional[str]
     asset_quantity: Optional[int]
