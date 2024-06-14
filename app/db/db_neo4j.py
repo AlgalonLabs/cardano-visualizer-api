@@ -1,162 +1,181 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Dict
+from typing import Optional
 
 from neo4j import Driver
 
 from app.db.connections import connect_neo4j
 from app.models.graph import Edge, GraphData, Node, AddressNode, TransactionNode, StakeAddressNode
-from app.models.transactions import ProcessedTransaction
+from app.models.transactions import Transaction
 
 
 def clear_neo4j_database():
-    """
-    Clear all data in Neo4j database
-    """
     logging.info("Clearing all data in Neo4j...")
     driver = connect_neo4j()
-
-    try:
-        with driver.session() as session:
-            session.run("MATCH (n) DETACH DELETE n")
-            logging.info("Database cleared successfully.")
-    except Exception as e:
-        logging.error(f"Error clearing database: {e}")
-    finally:
-        driver.close()
+    with driver.session() as session:
+        session.run("MATCH (n) DETACH DELETE n")
+    driver.close()
 
 
-def insert_into_neo4j(transactions: List[ProcessedTransaction], batch_size: int = 5000):
-    """
-    Insert Addresses, StakeAddresses, and Transactions into Neo4j
-
-    :param transactions: List of UTXOs to insert
-    :param batch_size: Batch size for inserting data
-    """
+def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: int = 5000):
     logging.info("Inserting data into Neo4j...")
     driver = connect_neo4j()
 
     with driver.session() as session:
-        # Create constraints to ensure uniqueness of addresses, transactions, and stake addresses
+        # Create constraints to ensure uniqueness of addresses, transactions, stake addresses, and UTXOs
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (a:Address) REQUIRE a.address IS UNIQUE")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (t:Transaction) REQUIRE t.tx_hash IS UNIQUE")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (s:StakeAddress) REQUIRE s.address IS UNIQUE")
+        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (u:UTXO) REQUIRE u.utxo_id IS UNIQUE")
 
-        def process_batch(batch_to_process: List[Dict[str, Any]]):
-            for transaction in batch_to_process:
-                input_address = transaction.get("input_address")
-                output_address = transaction.get("output_address")
-                tx_hash = transaction["tx_hash"]
-                output_value = transaction["output_value"]
-                actual_sent = transaction["actual_sent"]
-                timestamp: datetime = transaction["timestamp"]
-                asset_policy = transaction.get("asset_policy")
-                asset_name = transaction.get("asset_name")
-                asset_quantity = transaction.get("asset_quantity")
-                input_stake_address = transaction.get("input_stake_address")
-                output_stake_address = transaction.get("output_stake_address")
-                tx_hash_str = tx_hash.hex()
+        def process_batch(batch_to_process: Dict[str, Transaction]):
+            for tx_hash, tx in batch_to_process.items():
 
-                logging.debug(f'Inserting transaction: {tx_hash_str}')
+                timestamp = tx.outputs[0].timestamp  # Assuming the timestamp is consistent across outputs
+
+                logging.debug(f'Inserting transaction: {tx_hash}')
                 session.run(
                     """
                     MERGE (t:Transaction {tx_hash: $tx_hash})
-                    ON CREATE SET t.output_value = $output_value,
-                                  t.actual_sent = $actual_sent,
-                                  t.timestamp = datetime($timestamp),
-                                  t.asset_policy = $asset_policy,
-                                  t.asset_name = $asset_name,
-                                  t.asset_quantity = $asset_quantity
+                    ON CREATE SET t.timestamp = datetime($timestamp)
                     """,
                     {
-                        "tx_hash": tx_hash_str,
-                        "output_value": int(output_value),
-                        "actual_sent": int(actual_sent),
-                        "timestamp": timestamp.isoformat(),
-                        "asset_policy": asset_policy,
-                        "asset_name": asset_name,
-                        "asset_quantity": int(asset_quantity) if asset_quantity else None
+                        "tx_hash": tx_hash,
+                        "timestamp": timestamp.isoformat()
                     }
                 )
 
-                if input_address:
-                    logging.debug(f'Inserting input address: {input_address}')
+                for input_utxo in tx.inputs:
+                    utxo_id = f"{input_utxo.tx_hash_hex()}_{input_utxo.input_address}"
+                    session.run(
+                        """
+                        MERGE (u:UTXO {utxo_id: $utxo_id})
+                        ON CREATE SET u.value = $value,
+                                      u.asset_policy = $asset_policy,
+                                      u.asset_name = $asset_name,
+                                      u.asset_quantity = $asset_quantity
+                        """,
+                        {
+                            "utxo_id": utxo_id,
+                            "value": int(input_utxo.input_value) / 1000000,
+                            "asset_policy": input_utxo.asset_policy,
+                            "asset_name": input_utxo.asset_name,
+                            "asset_quantity": input_utxo.asset_quantity
+                        }
+                    )
                     session.run(
                         "MERGE (a:Address {address: $address})",
-                        {"address": input_address}
+                        {"address": input_utxo.input_address}
                     )
                     session.run(
                         """
                         MATCH (a:Address {address: $input_address})
-                        MATCH (t:Transaction {tx_hash: $tx_hash})
-                        MERGE (a)-[r:INPUT_TRANSACTION]->(t)
+                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MERGE (a)-[:OWNS]->(u)
                         """,
                         {
-                            "input_address": input_address,
-                            "tx_hash": tx_hash_str
+                            "input_address": input_utxo.input_address,
+                            "utxo_id": utxo_id
+                        }
+                    )
+                    session.run(
+                        """
+                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MATCH (t:Transaction {tx_hash: $tx_hash})
+                        MERGE (u)-[:INPUT]->(t)
+                        """,
+                        {
+                            "utxo_id": utxo_id,
+                            "tx_hash": tx_hash
                         }
                     )
 
-                if output_address:
-                    logging.debug(f'Inserting output address: {output_address}')
+                    if input_utxo.stake_address:
+                        session.run(
+                            "MERGE (s:StakeAddress {address: $address})",
+                            {"address": input_utxo.stake_address}
+                        )
+                        session.run(
+                            """
+                            MATCH (a:Address {address: $input_address})
+                            MATCH (s:StakeAddress {address: $stake_address})
+                            MERGE (a)-[r:STAKE]->(s)
+                            """,
+                            {
+                                "input_address": input_utxo.input_address,
+                                "stake_address": input_utxo.stake_address
+                            }
+                        )
+
+                for output_utxo in tx.outputs:
+                    utxo_id = f"{output_utxo.tx_hash_hex()}_{output_utxo.output_address}"
+                    session.run(
+                        """
+                        MERGE (u:UTXO {utxo_id: $utxo_id})
+                        ON CREATE SET u.value = $value,
+                                      u.asset_policy = $asset_policy,
+                                      u.asset_name = $asset_name,
+                                      u.asset_quantity = $asset_quantity
+                        """,
+                        {
+                            "utxo_id": utxo_id,
+                            "value": int(output_utxo.output_value) / 1000000,
+                            "asset_policy": output_utxo.asset_policy,
+                            "asset_name": output_utxo.asset_name,
+                            "asset_quantity": output_utxo.asset_quantity
+                        }
+                    )
                     session.run(
                         "MERGE (b:Address {address: $address})",
-                        {"address": output_address}
+                        {"address": output_utxo.output_address}
                     )
                     session.run(
                         """
-                        MATCH (b:Address {address: $output_address})
                         MATCH (t:Transaction {tx_hash: $tx_hash})
-                        MERGE (t)-[r:OUTPUT_TRANSACTION]->(b)
+                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MERGE (t)-[:OUTPUT]->(u)
                         """,
                         {
-                            "output_address": output_address,
-                            "tx_hash": tx_hash_str
+                            "tx_hash": tx_hash,
+                            "utxo_id": utxo_id
                         }
-                    )
-
-                if input_stake_address:
-                    logging.debug(f'Inserting input stake address: {input_stake_address}')
-                    session.run(
-                        "MERGE (s:StakeAddress {address: $address})",
-                        {"address": input_stake_address}
                     )
                     session.run(
                         """
-                        MATCH (a:Address {address: $input_address})
-                        MATCH (s:StakeAddress {address: $stake_address})
-                        MERGE (a)-[r:STAKE]->(s)
+                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MATCH (b:Address {address: $address})
+                        MERGE (b)-[:OWNS]->(u)
                         """,
                         {
-                            "input_address": input_address,
-                            "stake_address": input_stake_address
+                            "utxo_id": utxo_id,
+                            "address": output_utxo.output_address
                         }
                     )
 
-                if output_stake_address:
-                    logging.debug(f'Inserting output stake address: {output_stake_address}')
-                    session.run(
-                        "MERGE (s:StakeAddress {address: $address})",
-                        {"address": output_stake_address}
-                    )
-                    session.run(
-                        """
-                        MATCH (b:Address {address: $output_address})
-                        MATCH (s:StakeAddress {address: $stake_address})
-                        MERGE (b)-[r:STAKE]->(s)
-                        """,
-                        {
-                            "output_address": output_address,
-                            "stake_address": output_stake_address
-                        }
-                    )
+                    if output_utxo.stake_address:
+                        session.run(
+                            "MERGE (s:StakeAddress {address: $address})",
+                            {"address": output_utxo.stake_address}
+                        )
+                        session.run(
+                            """
+                            MATCH (b:Address {address: $output_address})
+                            MATCH (s:StakeAddress {address: $stake_address})
+                            MERGE (b)-[r:STAKE]->(s)
+                            """,
+                            {
+                                "output_address": output_utxo.output_address,
+                                "stake_address": output_utxo.stake_address
+                            }
+                        )
 
         total_batches = (len(transactions) + batch_size - 1) // batch_size  # Calculate total number of batches
 
         for i in range(total_batches):
             start_index = i * batch_size
             end_index = min(start_index + batch_size, len(transactions))
-            batch = transactions[start_index:end_index]
+            batch = {k: transactions[k] for k in list(transactions)[start_index:end_index]}
 
             logging.info(f"Processing batch {i + 1}/{total_batches}")
             process_batch(batch)

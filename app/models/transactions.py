@@ -1,30 +1,50 @@
+from dataclasses import dataclass, field
 from datetime import datetime
-from dataclasses import dataclass
 from typing import List, Optional
 
 
 @dataclass
 class InputUTXO:
-    address: str
-    value: int
+    tx_id: int
+    tx_out_id: int
+    tx_out_index: int
+    stake_address_id: int
+    tx_hash: bytes
+    timestamp: datetime
+    input_address: str
+    input_value: int
     stake_address: Optional[str] = None
+    asset_policy: Optional[str] = None
+    asset_name: Optional[str] = None
+    asset_quantity: Optional[int] = None
+
+    def tx_hash_hex(self) -> str:
+        return self.tx_hash.hex()
 
 
 @dataclass
 class OutputUTXO:
-    address: str
-    value: int
+    tx_id: int
+    tx_out_index: int
+    stake_address_id: int
+    tx_hash: bytes
     timestamp: datetime
+    output_address: str
+    output_value: int
+    timestamp: datetime
+    stake_address: Optional[str] = None
     asset_policy: Optional[str] = None
     asset_name: Optional[str] = None
     asset_quantity: Optional[int] = None
-    stake_address: Optional[str] = None
+
+    def tx_hash_hex(self) -> str:
+        return self.tx_hash.hex()
 
 
 @dataclass
 class Transaction:
-    inputs: List[InputUTXO]
-    outputs: List[OutputUTXO]
+    inputs: List[InputUTXO] = field(default_factory=list)
+    outputs: List[OutputUTXO] = field(default_factory=list)
 
 
 @dataclass
