@@ -34,6 +34,7 @@ class OutputUTXO:
     stake_address_id: int
     consuming_tx_hash: bytes
     creating_tx_hash: bytes
+    fee: int
     consuming_timestamp: datetime
     creating_timestamp: datetime
     output_address: str
@@ -52,6 +53,7 @@ class OutputUTXO:
 
 @dataclass
 class Transaction:
+    fee: int = 0
     inputs: List[InputUTXO] = field(default_factory=list)
     outputs: List[OutputUTXO] = field(default_factory=list)
 

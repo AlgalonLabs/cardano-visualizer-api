@@ -29,6 +29,7 @@ def group_transactions(inputs: List[InputUTXO], outputs: List[OutputUTXO]) -> Di
         if tx_hash not in transactions:
             transactions[tx_hash] = Transaction(inputs=[], outputs=[])
 
+        transactions[tx_hash].fee = utxo.fee
         transactions[tx_hash].outputs.append(utxo)
 
     logging.info(f"Grouped {len(transactions)} unique transactions")

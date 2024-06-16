@@ -44,6 +44,7 @@ def fetch_output_utxos(start, end) -> List[Dict[str, Any]]:
         creating_tx.id          AS tx_id,
         creating_tx.hash        AS creating_tx_hash,  -- Transaction hash creating the output UTXO
         consuming_tx.hash       AS consuming_tx_hash, -- Transaction hash consuming the output UTXO
+        creating_tx.fee         AS fee,
         tx_out.index            AS tx_out_index,
         tx_out.address          AS output_address,
         tx_out.value            AS output_value,
