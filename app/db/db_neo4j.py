@@ -27,12 +27,18 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (a:Address) REQUIRE a.address IS UNIQUE")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (t:Transaction) REQUIRE t.tx_hash IS UNIQUE")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (s:StakeAddress) REQUIRE s.address IS UNIQUE")
-        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (u:UTXO) REQUIRE u.utxo_id IS UNIQUE")
+        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (u:UTXO) REQUIRE u.utxo_hash IS UNIQUE")
 
         def process_batch(batch_to_process: Dict[str, Transaction]):
             for tx_hash, tx in batch_to_process.items():
 
-                timestamp = tx.outputs[0].timestamp  # Assuming the timestamp is consistent across outputs
+                if tx.outputs:
+                    timestamp = tx.outputs[0].creating_timestamp  # Assuming the timestamp is consistent across outputs
+                elif tx.inputs:
+                    timestamp = tx.inputs[0].consuming_timestamp  # Assuming the timestamp is consistent across inputs
+                else:
+                    logging.warning(f"Transaction {tx_hash} has no inputs or outputs")
+                    continue
 
                 logging.debug(f'Inserting transaction: {tx_hash}')
                 session.run(
@@ -47,21 +53,23 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
                 )
 
                 for input_utxo in tx.inputs:
-                    utxo_id = f"{input_utxo.tx_hash_hex()}_{input_utxo.input_address}"
+                    utxo_hash = f"{input_utxo.creating_tx_hash_tex()}_{input_utxo.tx_out_index}"
                     session.run(
                         """
-                        MERGE (u:UTXO {utxo_id: $utxo_id})
+                        MERGE (u:UTXO {utxo_hash: $utxo_hash})
                         ON CREATE SET u.value = $value,
                                       u.asset_policy = $asset_policy,
                                       u.asset_name = $asset_name,
-                                      u.asset_quantity = $asset_quantity
+                                      u.asset_quantity = $asset_quantity,
+                                      u.timestamp = datetime($timestamp)
                         """,
                         {
-                            "utxo_id": utxo_id,
+                            "utxo_hash": utxo_hash,
                             "value": int(input_utxo.input_value) / 1000000,
                             "asset_policy": input_utxo.asset_policy,
                             "asset_name": input_utxo.asset_name,
-                            "asset_quantity": input_utxo.asset_quantity
+                            "asset_quantity": input_utxo.asset_quantity,
+                            "timestamp": input_utxo.creating_timestamp
                         }
                     )
                     session.run(
@@ -71,22 +79,22 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
                     session.run(
                         """
                         MATCH (a:Address {address: $input_address})
-                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MATCH (u:UTXO {utxo_hash: $utxo_hash})
                         MERGE (a)-[:OWNS]->(u)
                         """,
                         {
                             "input_address": input_utxo.input_address,
-                            "utxo_id": utxo_id
+                            "utxo_hash": utxo_hash
                         }
                     )
                     session.run(
                         """
-                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MATCH (u:UTXO {utxo_hash: $utxo_hash})
                         MATCH (t:Transaction {tx_hash: $tx_hash})
                         MERGE (u)-[:INPUT]->(t)
                         """,
                         {
-                            "utxo_id": utxo_id,
+                            "utxo_hash": utxo_hash,
                             "tx_hash": tx_hash
                         }
                     )
@@ -109,21 +117,23 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
                         )
 
                 for output_utxo in tx.outputs:
-                    utxo_id = f"{output_utxo.tx_hash_hex()}_{output_utxo.output_address}"
+                    utxo_hash = f"{output_utxo.consuming_tx_hash_tex()}_{output_utxo.tx_out_index}"
                     session.run(
                         """
-                        MERGE (u:UTXO {utxo_id: $utxo_id})
+                        MERGE (u:UTXO {utxo_hash: $utxo_hash})
                         ON CREATE SET u.value = $value,
                                       u.asset_policy = $asset_policy,
                                       u.asset_name = $asset_name,
-                                      u.asset_quantity = $asset_quantity
+                                      u.asset_quantity = $asset_quantity,
+                                      u.timestamp = datetime($timestamp)
                         """,
                         {
-                            "utxo_id": utxo_id,
+                            "utxo_hash": utxo_hash,
                             "value": int(output_utxo.output_value) / 1000000,
                             "asset_policy": output_utxo.asset_policy,
                             "asset_name": output_utxo.asset_name,
-                            "asset_quantity": output_utxo.asset_quantity
+                            "asset_quantity": output_utxo.asset_quantity,
+                            "timestamp": output_utxo.consuming_timestamp
                         }
                     )
                     session.run(
@@ -133,22 +143,22 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
                     session.run(
                         """
                         MATCH (t:Transaction {tx_hash: $tx_hash})
-                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MATCH (u:UTXO {utxo_hash: $utxo_hash})
                         MERGE (t)-[:OUTPUT]->(u)
                         """,
                         {
                             "tx_hash": tx_hash,
-                            "utxo_id": utxo_id
+                            "utxo_hash": utxo_hash
                         }
                     )
                     session.run(
                         """
-                        MATCH (u:UTXO {utxo_id: $utxo_id})
+                        MATCH (u:UTXO {utxo_hash: $utxo_hash})
                         MATCH (b:Address {address: $address})
                         MERGE (b)-[:OWNS]->(u)
                         """,
                         {
-                            "utxo_id": utxo_id,
+                            "utxo_hash": utxo_hash,
                             "address": output_utxo.output_address
                         }
                     )
@@ -182,6 +192,9 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
             logging.info(f"Processed batch of size {len(batch)}")
 
     driver.close()
+
+
+
 
 
 def parse_timestamp(ts: str) -> str:
