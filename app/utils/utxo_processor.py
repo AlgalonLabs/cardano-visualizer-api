@@ -15,19 +15,21 @@ def group_transactions(inputs: List[InputUTXO], outputs: List[OutputUTXO]) -> Di
 
     logging.info(f"Processing {len(inputs)} inputs")
     for utxo in inputs:
-        tx_hash = utxo.consuming_tx_hash_tex()
+        tx_hash = utxo.consuming_tx_hash
 
         if tx_hash not in transactions:
-            transactions[tx_hash] = Transaction(inputs=[], outputs=[])
+            transactions[tx_hash] = Transaction(inputs=[], outputs=[], block_index=utxo.block_index,
+                                                block_hash=utxo.block_hash)
 
         transactions[tx_hash].inputs.append(utxo)
 
     logging.info(f"Processing {len(outputs)} outputs")
     for utxo in outputs:
-        tx_hash = utxo.creating_tx_hash_tex()
+        tx_hash = utxo.creating_tx_hash
 
         if tx_hash not in transactions:
-            transactions[tx_hash] = Transaction(inputs=[], outputs=[])
+            transactions[tx_hash] = Transaction(inputs=[], outputs=[], block_index=utxo.block_index,
+                                                block_hash=utxo.block_hash)
 
         transactions[tx_hash].fee = utxo.fee
         transactions[tx_hash].outputs.append(utxo)

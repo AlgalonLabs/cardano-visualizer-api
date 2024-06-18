@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Any
 from typing import Optional
 
 from neo4j import Driver
@@ -18,8 +18,87 @@ def clear_neo4j_database():
     driver.close()
 
 
-def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: int = 5000):
-    logging.info("Inserting data into Neo4j...")
+def insert_blocks(blocks: List[Dict[str, Any]]):
+    """
+    Insert blocks into Neo4j.
+    :param blocks: List of blocks with their properties.
+    """
+    driver = connect_neo4j()
+
+    with driver.session() as session:
+        # Create constraints to ensure uniqueness of block hashes
+        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (b:Block) REQUIRE b.hash IS UNIQUE;")
+
+        for block in blocks:
+            session.run(
+                """
+                MERGE (b:Block {hash: $hash})
+                ON CREATE SET b.id = $block_id,
+                              b.epoch_no = $epoch_no,
+                              b.slot_no = $slot_no,
+                              b.epoch_slot_no = $epoch_slot_no,
+                              b.block_no = $block_no,
+                              b.previous_id = $previous_id,
+                              b.slot_leader_id = $slot_leader_id,
+                              b.size = $size,
+                              b.time = datetime($time),
+                              b.tx_count = $tx_count,
+                              b.proto_major = $proto_major,
+                              b.proto_minor = $proto_minor,
+                              b.vrf_key = $vrf_key,
+                              b.op_cert = $op_cert,
+                              b.op_cert_counter = $op_cert_counter
+                ON MATCH SET b.id = $block_id,
+                             b.epoch_no = $epoch_no,
+                             b.slot_no = $slot_no,
+                             b.epoch_slot_no = $epoch_slot_no,
+                             b.block_no = $block_no,
+                             b.previous_id = $previous_id,
+                             b.slot_leader_id = $slot_leader_id,
+                             b.size = $size,
+                             b.time = datetime($time),
+                             b.tx_count = $tx_count,
+                             b.proto_major = $proto_major,
+                             b.proto_minor = $proto_minor,
+                             b.vrf_key = $vrf_key,
+                             b.op_cert = $op_cert,
+                             b.op_cert_counter = $op_cert_counter
+                """,
+                {
+                    "hash": block["hash"],
+                    "block_id": block['id'],
+                    "epoch_no": block["epoch_no"],
+                    "slot_no": block["slot_no"],
+                    "epoch_slot_no": block["epoch_slot_no"],
+                    "block_no": block["block_no"],
+                    "previous_id": block["previous_id"],
+                    "slot_leader_id": block["slot_leader_id"],
+                    "size": block["size"],
+                    "time": block["time"],
+                    "tx_count": block["tx_count"],
+                    "proto_major": block["proto_major"],
+                    "proto_minor": block["proto_minor"],
+                    "vrf_key": block["vrf_key"],
+                    "op_cert": block["op_cert"],
+                    "op_cert_counter": block["op_cert_counter"]
+                }
+            )
+            # Create relationships to previous block
+            session.run(
+                """
+                MATCH (b:Block {hash: $hash})
+                MATCH (b2:Block) WHERE b2.id = b.previous_id
+                MERGE (b2)-[:PRECEDES]->(b)
+                """,
+                {
+                    "hash": block["hash"]
+                }
+            )
+
+    driver.close()
+
+
+def insert_utxos(transactions: Dict[str, Transaction], batch_size: int = 1000):
     driver = connect_neo4j()
 
     with driver.session() as session:
@@ -50,12 +129,26 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
                     {
                         "tx_hash": tx_hash,
                         "timestamp": timestamp,
-                        "fee": tx.fee
+                        "fee": int(tx.fee) / 1000000,
+                        "block_index": tx.block_index
+                    }
+                )
+
+                session.run(
+                    """
+                    MATCH (t:Transaction {tx_hash: $tx_hash})
+                    MATCH (b:Block {hash: $block_hash})
+                    MERGE (b)-[:CONTAINS]->(t)
+                    MERGE (t)-[:CONTAINED_BY]->(b)
+                    """,
+                    {
+                        "tx_hash": tx_hash,
+                        "block_hash": tx.block_hash
                     }
                 )
 
                 for input_utxo in tx.inputs:
-                    utxo_hash = input_utxo.creating_tx_hash_tex()
+                    utxo_hash = input_utxo.creating_tx_hash
                     session.run(
                         """
                         MERGE (u:UTXO {utxo_hash: $utxo_hash, index: $index})
@@ -123,7 +216,7 @@ def insert_utxos_into_neo4j(transactions: Dict[str, Transaction], batch_size: in
                         )
 
                 for output_utxo in tx.outputs:
-                    utxo_hash = output_utxo.creating_tx_hash_tex()
+                    utxo_hash = output_utxo.creating_tx_hash
                     session.run(
                         """
                         MERGE (u:UTXO {utxo_hash: $utxo_hash, index: $index})

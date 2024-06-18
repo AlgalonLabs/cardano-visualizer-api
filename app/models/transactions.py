@@ -9,8 +9,10 @@ class InputUTXO:
     tx_out_id: int
     tx_out_index: int
     stake_address_id: int
-    consuming_tx_hash: bytes
-    creating_tx_hash: bytes
+    consuming_tx_hash: str
+    creating_tx_hash: str
+    block_hash: str
+    block_index: int
     consuming_timestamp: datetime
     creating_timestamp: datetime
     input_address: str
@@ -20,20 +22,16 @@ class InputUTXO:
     asset_name: Optional[str] = None
     asset_quantity: Optional[int] = None
 
-    def consuming_tx_hash_tex(self) -> str:
-        return self.consuming_tx_hash.hex()
-
-    def creating_tx_hash_tex(self) -> str:
-        return self.creating_tx_hash.hex()
-
 
 @dataclass
 class OutputUTXO:
     tx_id: int
     tx_out_index: int
     stake_address_id: int
-    consuming_tx_hash: bytes
-    creating_tx_hash: bytes
+    consuming_tx_hash: str
+    creating_tx_hash: str
+    block_hash: str
+    block_index: int
     fee: int
     consuming_timestamp: datetime
     creating_timestamp: datetime
@@ -44,16 +42,12 @@ class OutputUTXO:
     asset_name: Optional[str] = None
     asset_quantity: Optional[int] = None
 
-    def consuming_tx_hash_tex(self) -> str:
-        return self.consuming_tx_hash.hex()
-
-    def creating_tx_hash_tex(self) -> str:
-        return self.creating_tx_hash.hex()
-
 
 @dataclass
 class Transaction:
-    fee: int = 0
+    fee: int = 0.0
+    block_hash: str = ""
+    block_index: int = 0
     inputs: List[InputUTXO] = field(default_factory=list)
     outputs: List[OutputUTXO] = field(default_factory=list)
 
