@@ -1,9 +1,26 @@
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, ForeignKey, Numeric, Boolean, DateTime, \
+from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Numeric, Boolean, DateTime, \
     LargeBinary, Index
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+
+class Epoch(Base):
+    __tablename__ = 'epoch'
+
+    id = Column(BigInteger, primary_key=True)
+    out_sum = Column(Numeric(39, 0), nullable=False)
+    fees = Column(Numeric(20, 0), nullable=False)
+    tx_count = Column(Integer, nullable=False)
+    blk_count = Column(Integer, nullable=False)
+    no = Column(Integer, nullable=False, unique=True)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index('idx_epoch_no', 'no'),
+    )
 
 
 class Block(Base):
@@ -65,7 +82,19 @@ class MultiAsset(Base):
     )
 
 
-class TxOut(Base):
+class TransactionIn(Base):
+    __tablename__ = 'tx_in'
+
+    id = Column(Integer, primary_key=True)
+    tx_in_id = Column(Integer)
+    tx_out_id = Column(Integer)
+    tx_out_index = Column(Integer)
+    transaction_id = Column(Integer, ForeignKey('tx.id'))
+
+    transaction = relationship("Transaction", back_populates="tx_ins")
+
+
+class TransactionOut(Base):
     __tablename__ = 'tx_out'
 
     id = Column(BigInteger, primary_key=True)
@@ -114,7 +143,7 @@ class Transaction(Base):
     )
 
 
-class MATxOut(Base):
+class MultiAssetTransactionOut(Base):
     __tablename__ = 'ma_tx_out'
 
     id = Column(BigInteger, primary_key=True)
@@ -122,7 +151,7 @@ class MATxOut(Base):
     tx_out_id = Column(BigInteger, ForeignKey('tx_out.id'), nullable=False)
     ident = Column(BigInteger, ForeignKey('multi_asset.id'), nullable=False)
 
-    tx_out = relationship('TxOut')
+    tx_out = relationship('TransactionOut')
     multi_asset = relationship('MultiAsset')
 
     __table_args__ = (
@@ -130,7 +159,7 @@ class MATxOut(Base):
     )
 
 
-class MATxMint(Base):
+class MultiAssetTransactionMint(Base):
     __tablename__ = 'ma_tx_mint'
 
     id = Column(BigInteger, primary_key=True)
@@ -144,12 +173,3 @@ class MATxMint(Base):
     __table_args__ = (
         Index('idx_ma_tx_mint_tx_id', 'tx_id'),
     )
-
-
-# Create engine and session
-engine = create_engine('postgresql://user:password@localhost/cardano_db')
-Session = sessionmaker(bind=engine)
-session = Session()
-
-# Create all tables
-Base.metadata.create_all(engine)

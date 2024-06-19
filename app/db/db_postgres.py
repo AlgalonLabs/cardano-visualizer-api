@@ -1,42 +1,44 @@
 import logging
 from typing import List, Dict, Any
 
+from sqlalchemy.orm import Session
+from sqlalchemy.sql.operators import and_
+
 from app.db.connections import connect_postgres
+from app.db.models.base import Block, Epoch
 
 
-def fetch_blocks(start_time: str, end_time: str) -> List[Dict[str, Any]]:
+def fetch_blocks(session: Session, start_time: str, end_time: str) -> List[Block]:
     """
     Fetch blocks from Postgres for a specified time range.
-    :param conn:
+    :param session: SQLAlchemy session object.
     :param start_time: Start time of the range in ISO format.
     :param end_time: End time of the range in ISO format.
-    :return: List of blocks with their properties.
+    :return: List of Block ORM objects.
     """
     logging.info(f"Fetching blocks for the given time range: {start_time} - {end_time}")
-    query = """
-    SELECT id,
-           encode(hash, 'hex')    as hash,
-           epoch_no,
-           slot_no,
-           epoch_slot_no,
-           block_no,
-           previous_id,
-           slot_leader_id,
-           size,
-           time,
-           tx_count,
-           proto_major,
-           proto_minor,
-           vrf_key,
-           encode(op_cert, 'hex') as op_cert,
-           op_cert_counter
-    FROM block
-    WHERE
-        time >= %s
-        AND time <= %s
+
+    blocks = session.query(Block).filter(
+        and_(Block.time >= start_time, Block.time <= end_time)
+    ).all()
+
+    return blocks
+
+
+def fetch_epochs(session: Session, start_time: str, end_time: str) -> List[Dict[str, Any]]:
     """
-    data = (start_time, end_time)
-    return execute_query(query, data)
+    Fetch epochs from Postgres for a specified time range.
+    :param session: SQLAlchemy session object.
+    :param start_time: Start time of the range in ISO format.
+    :param end_time: End time of the range in ISO format.
+    :return: List of epoch ORM objects.
+    """
+    logging.info(f"Fetching epochs for the given time range: {start_time} - {end_time}")
+    epochs = session.query(Epoch).filter(
+        and_(Epoch.time >= start_time, Epoch.time <= end_time)
+    ).all()
+
+    return epochs
 
 
 def fetch_input_utxos(start: str, end: str) -> List[Dict[str, Any]]:

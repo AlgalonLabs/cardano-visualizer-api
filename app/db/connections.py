@@ -1,10 +1,12 @@
 import logging
 import os
 
-import psycopg2
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j.exceptions import ServiceUnavailable, AuthError
+from sqlalchemy import create_engine
+
+from app.db.models.base import Base
 
 # Load environment variables from .env file
 load_dotenv()
@@ -33,18 +35,29 @@ def connect_neo4j():
 def connect_postgres():
     dbname = os.getenv("POSTGRES_DB", "cexplorer")
     user = os.getenv("POSTGRES_USER", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "v8hlDV0yMAHHlIurYupj")
+    password = os.getenv("POSTGRES_PASSWORD")
     host = os.getenv("POSTGRES_HOST", "localhost")
 
     try:
-        conn = psycopg2.connect(
-            dbname=dbname,
-            user=user,
-            password=password,
-            host=host
+        engine = create_engine(
+            f'postgresql+psycopg2://{user}:{password}@{host}/{dbname}'
         )
+        Base.metadata.create_all(engine)
         logging.info(f"Connected to db {dbname} on host {host}")
-        return conn
-    except psycopg2.Error as e:
+        return engine
+    except Exception as e:
         logging.error(f"Failed to connect to db {dbname} on host {host}: {e}")
         raise
+
+
+def init_db():
+    dbname = os.getenv("POSTGRES_DB", "cexplorer")
+    user = os.getenv("POSTGRES_USER", "postgres")
+    password = os.getenv("POSTGRES_PASSWORD")
+    host = os.getenv("POSTGRES_HOST", "localhost")
+
+    engine = create_engine(
+        f'postgresql+psycopg2://{user}:{password}@{host}/{dbname}'
+    )
+    Base.metadata.create_all(engine)
+    print("Database schema created successfully.")
