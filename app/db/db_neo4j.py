@@ -1,99 +1,145 @@
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict
 from typing import Optional
 
 from neo4j import Driver
 
 from app.db.connections import connect_neo4j
+from app.db.models.base import Epoch, Block
 from app.models.graph import Edge, GraphData, Node, AddressNode, TransactionNode, StakeAddressNode
 from app.models.transactions import Transaction
 
 
 def clear_neo4j_database():
-    logging.info("Clearing all data in Neo4j...")
+    logging.info("Performing a clean-up of the graph database")
     driver = connect_neo4j()
     with driver.session() as session:
         session.run("MATCH (n) DETACH DELETE n")
     driver.close()
 
 
-def insert_blocks(blocks: List[Dict[str, Any]]):
+def insert_epochs(epochs: List[Epoch]):
     """
-    Insert blocks into Neo4j.
+    Insert epochs into graph.
+    :param epochs:
+    :return:
+    """
+    driver = connect_neo4j()
+
+    with driver.session() as session:
+        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Epoch) REQUIRE e.no IS UNIQUE")
+
+        logging.info(f"Inserting {len(epochs)} epochs into graph")
+        epoch_data = [
+            {
+                "no": epoch.no,
+                "out_sum": epoch.out_sum,
+                "fees": epoch.fees,
+                "start_time": epoch.start_time.isoformat(),
+                "end_time": epoch.end_time.isoformat()
+            }
+            for epoch in epochs
+        ]
+
+        session.run(
+            """
+            UNWIND $epoch_data AS data
+            MERGE (e:Epoch {no: data.no})
+            ON CREATE SET e.out_sum = data.out_sum,
+                          e.fees = data.fees,
+                          e.start_time = datetime(data.start_time),
+                          e.end_time = datetime(data.end_time)
+            """,
+            {"epoch_data": epoch_data}
+        )
+        logging.info(f"Inserted {len(epochs)} epochs into graph")
+
+    driver.close()
+
+
+def insert_blocks(blocks: List[Block]):
+    """
+    Insert blocks into graph.
     :param blocks: List of blocks with their properties.
     """
     driver = connect_neo4j()
 
     with driver.session() as session:
-        # Create constraints to ensure uniqueness of block hashes
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (b:Block) REQUIRE b.hash IS UNIQUE;")
+        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Epoch) REQUIRE e.no IS UNIQUE;")
 
-        for block in blocks:
-            session.run(
-                """
-                MERGE (b:Block {hash: $hash})
-                ON CREATE SET b.id = $block_id,
-                              b.epoch_no = $epoch_no,
-                              b.slot_no = $slot_no,
-                              b.epoch_slot_no = $epoch_slot_no,
-                              b.block_no = $block_no,
-                              b.previous_id = $previous_id,
-                              b.slot_leader_id = $slot_leader_id,
-                              b.size = $size,
-                              b.time = datetime($time),
-                              b.tx_count = $tx_count,
-                              b.proto_major = $proto_major,
-                              b.proto_minor = $proto_minor,
-                              b.vrf_key = $vrf_key,
-                              b.op_cert = $op_cert,
-                              b.op_cert_counter = $op_cert_counter
-                ON MATCH SET b.id = $block_id,
-                             b.epoch_no = $epoch_no,
-                             b.slot_no = $slot_no,
-                             b.epoch_slot_no = $epoch_slot_no,
-                             b.block_no = $block_no,
-                             b.previous_id = $previous_id,
-                             b.slot_leader_id = $slot_leader_id,
-                             b.size = $size,
-                             b.time = datetime($time),
-                             b.tx_count = $tx_count,
-                             b.proto_major = $proto_major,
-                             b.proto_minor = $proto_minor,
-                             b.vrf_key = $vrf_key,
-                             b.op_cert = $op_cert,
-                             b.op_cert_counter = $op_cert_counter
-                """,
-                {
-                    "hash": block["hash"],
-                    "block_id": block['id'],
-                    "epoch_no": block["epoch_no"],
-                    "slot_no": block["slot_no"],
-                    "epoch_slot_no": block["epoch_slot_no"],
-                    "block_no": block["block_no"],
-                    "previous_id": block["previous_id"],
-                    "slot_leader_id": block["slot_leader_id"],
-                    "size": block["size"],
-                    "time": block["time"],
-                    "tx_count": block["tx_count"],
-                    "proto_major": block["proto_major"],
-                    "proto_minor": block["proto_minor"],
-                    "vrf_key": block["vrf_key"],
-                    "op_cert": block["op_cert"],
-                    "op_cert_counter": block["op_cert_counter"]
-                }
-            )
-            # Create relationships to previous block
-            session.run(
-                """
-                MATCH (b:Block {hash: $hash})
-                MATCH (b2:Block) WHERE b2.id = b.previous_id
-                MERGE (b2)-[:PRECEDES]->(b)
-                """,
-                {
-                    "hash": block["hash"]
-                }
-            )
+        blocks_data = [
+            {
+                "hash": block.hash,
+                "block_id": block.id,
+                "epoch_no": block.epoch_no,
+                "slot_no": block.slot_no,
+                "epoch_slot_no": block.epoch_slot_no,
+                "block_no": block.block_no,
+                "previous_id": block.previous_id,
+                "slot_leader_id": block.slot_leader_id,
+                "size": block.size,
+                "time": block.time.isoformat(),
+                "tx_count": block.tx_count,
+                "proto_major": block.proto_major,
+                "proto_minor": block.proto_minor,
+                "vrf_key": block.vrf_key,
+                "op_cert": block.op_cert,
+                "op_cert_counter": block.op_cert_counter
+            }
+            for block in blocks
+        ]
+
+        session.run(
+            """
+            UNWIND $blocks_data AS block
+            MERGE (b:Block {hash: block.hash})
+            ON CREATE SET b.id = block.block_id,
+                          b.epoch_no = block.epoch_no,
+                          b.slot_no = block.slot_no,
+                          b.epoch_slot_no = block.epoch_slot_no,
+                          b.block_no = block.block_no,
+                          b.previous_id = block.previous_id,
+                          b.slot_leader_id = block.slot_leader_id,
+                          b.size = block.size,
+                          b.time = datetime(block.time),
+                          b.tx_count = block.tx_count,
+                          b.proto_major = block.proto_major,
+                          b.proto_minor = block.proto_minor,
+                          b.vrf_key = block.vrf_key,
+                          b.op_cert = block.op_cert,
+                          b.op_cert_counter = block.op_cert_counter
+            ON MATCH SET b.id = block.block_id,
+                         b.epoch_no = block.epoch_no,
+                         b.slot_no = block.slot_no,
+                         b.epoch_slot_no = block.epoch_slot_no,
+                         b.block_no = block.block_no,
+                         b.previous_id = block.previous_id,
+                         b.slot_leader_id = block.slot_leader_id,
+                         b.size = block.size,
+                         b.time = datetime(block.time),
+                         b.tx_count = block.tx_count,
+                         b.proto_major = block.proto_major,
+                         b.proto_minor = block.proto_minor,
+                         b.vrf_key = block.vrf_key,
+                         b.op_cert = block.op_cert,
+                         b.op_cert_counter = block.op_cert_counter
+
+            WITH block
+            MATCH (b:Block {hash: block.hash})
+            MATCH (b2:Block) WHERE b2.id = block.previous_id
+            MERGE (b2)-[:PRECEDES]->(b)
+
+            WITH block
+            MATCH (e:Epoch {no: block.epoch_no})
+            MATCH (b:Block {hash: block.hash})
+            MERGE (e)-[:CONTAINS]->(b)
+            """,
+            {"blocks_data": blocks_data}
+        )
+
+        logging.info(f"Inserted {len(blocks)} blocks into graph")
 
     driver.close()
 
