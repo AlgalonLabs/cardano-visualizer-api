@@ -25,10 +25,12 @@ def fetch_blocks(session: Session, start_time: str, end_time: str) -> List[Block
         and_(Block.time >= start_time, Block.time <= end_time)
     ).all()
 
+    logging.info(f"Fetched: {len(blocks)} blocks between {start_time} - {end_time}")
+
     return blocks
 
 
-def fetch_epochs(session: Session, start_time: str, end_time: str) -> List[Dict[str, Any]]:
+def fetch_epochs(session: Session, start_time: str, end_time: str) -> List[Epoch]:
     """
     Fetch epochs from Postgres for a specified time range.
     :param session: SQLAlchemy session object.
@@ -38,13 +40,12 @@ def fetch_epochs(session: Session, start_time: str, end_time: str) -> List[Dict[
     """
     logging.info(f"Fetching epochs between: {start_time} - {end_time}")
     epochs = session.query(Epoch).filter(
-        and_(Epoch.time >= start_time, Epoch.time <= end_time)
+        and_(Epoch.start_time >= start_time, Epoch.end_time <= end_time)
     ).all()
 
     logging.info(f"Fetched: {len(epochs)} epochs between {start_time} - {end_time}")
 
     return epochs
-
 
 def fetch_input_utxos(session: Session, start: str, end: str) -> List[InputUTXO]:
     logging.info(f"Fetching input UTXOs between: {start} - {end}")

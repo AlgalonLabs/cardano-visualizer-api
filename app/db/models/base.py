@@ -44,6 +44,7 @@ class Block(Base):
     op_cert_counter = Column(BigInteger)
 
     previous_block = relationship('Block', remote_side=[id], backref='next_blocks')
+    transactions = relationship('Transaction', back_populates='block')
 
     __table_args__ = (
         Index('idx_block_block_no', 'block_no'),
@@ -110,6 +111,7 @@ class TransactionOut(Base):
     reference_script_id = Column(BigInteger)
 
     stake_address = relationship('StakeAddress')
+    transaction = relationship('Transaction', back_populates='tx_outs')
 
     __table_args__ = (
         Index('idx_tx_out_payment_cred', 'payment_cred'),
@@ -136,7 +138,9 @@ class Transaction(Base):
     valid_contract = Column(Boolean, nullable=False)
     script_size = Column(Integer, nullable=False)
 
-    block = relationship('Block')
+    block = relationship('Block', back_populates='transactions')
+    tx_ins = relationship('TransactionIn', back_populates='transaction')
+    tx_outs = relationship('TransactionOut', back_populates='transaction')
 
     __table_args__ = (
         Index('idx_tx_block_id', 'block_id'),

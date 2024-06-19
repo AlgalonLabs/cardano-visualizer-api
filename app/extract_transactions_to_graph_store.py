@@ -1,36 +1,43 @@
 import datetime
 import logging
 
-from app.db.db_neo4j import insert_utxos, clear_neo4j_database, insert_blocks, insert_epochs
-from app.db.db_postgres import fetch_input_utxos, fetch_output_utxos, fetch_blocks, fetch_epochs
-from app.utils.utxo_processor import process_utxos
+from sqlalchemy.orm import sessionmaker
+
+from app.db.connections import connect_postgres
+from app.db.db_neo4j import clear_neo4j_database, insert_blocks, insert_epochs
+from app.db.db_postgres import fetch_blocks, fetch_epochs
 
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(asctime)s - %(message)s")
 
+    Session = sessionmaker(bind=connect_postgres())
+
     # Clear existing data
     clear_neo4j_database()
 
     start = datetime.datetime(2017, 9, 23)
-    end = start + datetime.timedelta(weeks=1)
-    # 4 years of data
-    for i in range(0, 208):
+    end = datetime.datetime(2024, 5, 4)
+    # Process epochs
+    with Session() as session:
         try:
-            epochs = fetch_epochs(start, end)
+            epochs = fetch_epochs(session, start.isoformat(), end.isoformat())
             insert_epochs(epochs)
-        # try:
-        #     start_string = start.isoformat()
-        #     logging.info(f"Day {start_string}: Fetching blocks")
-        #     blocks = fetch_blocks(start, end)
-        #     logging.info(f"Day {start_string}: Fetched {len(blocks)} blocks")
-        #
-        #     logging.info(f"Day {start_string}: Inserting blocks into Neo4j")
-        #     insert_blocks(blocks)
-        #     logging.info(f"Day {start_string}: Inserted {len(blocks)} blocks into Neo4j")
-        #     start, end = end, end + datetime.timedelta(weeks=1)
         except Exception as e:
-            logging.error(f"Day {i + 1}: Error processing blocks from {start} to {end}: {e}", exc_info=True)
+            logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
+
+    end = start + datetime.timedelta(weeks=1)
+    # Process blocks
+    for i in range(0, 416):
+        with Session() as session:
+            try:
+                blocks = fetch_blocks(session, start.isoformat(), end.isoformat())
+                insert_blocks(blocks)
+            except Exception as e:
+                logging.error(f"Week {i + 1}: Error processing blocks from {start} to {end}: {e}", exc_info=True)
+
+        start = end
+        end = start + datetime.timedelta(weeks=1)
 
     # start = datetime.datetime(2021, 1, 1)
     # end = datetime.datetime(2021, 1, 2)
@@ -56,8 +63,7 @@ def main():
     #         start, end = end, end + datetime.timedelta(days=1)
     #     except Exception as e:
     #         logging.error(f"Day {i + 1}: Error processing UTXOs from {start} to {end}: {e}", exc_info=True)
-
-    logging.info("Finished processing all UTXOs")
+    # logging.info("Finished processing all UTXOs")
 
 
 if __name__ == "__main__":

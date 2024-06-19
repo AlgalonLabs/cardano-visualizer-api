@@ -9,6 +9,7 @@ from app.db.connections import connect_neo4j
 from app.db.models.base import Epoch, Block
 from app.models.graph import Edge, GraphData, Node, AddressNode, TransactionNode, StakeAddressNode
 from app.models.transactions import Transaction
+from app.utils.currency_converter import CurrencyConverter
 
 
 def clear_neo4j_database():
@@ -34,8 +35,8 @@ def insert_epochs(epochs: List[Epoch]):
         epoch_data = [
             {
                 "no": epoch.no,
-                "out_sum": epoch.out_sum,
-                "fees": epoch.fees,
+                "out_sum": CurrencyConverter.lovelace_to_ada(epoch.out_sum),
+                "fees": CurrencyConverter.lovelace_to_ada(epoch.fees),
                 "start_time": epoch.start_time.isoformat(),
                 "end_time": epoch.end_time.isoformat()
             }
@@ -90,6 +91,8 @@ def insert_blocks(blocks: List[Block]):
             }
             for block in blocks
         ]
+
+        logging.info(f"Inserting {len(blocks)} blocks into graph")
 
         session.run(
             """
