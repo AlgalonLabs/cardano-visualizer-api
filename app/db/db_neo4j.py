@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Any
 from typing import Optional
 
 from neo4j import Driver
@@ -20,14 +20,13 @@ def clear_neo4j_database():
     driver.close()
 
 
-def insert_epochs(epochs: List[Epoch]):
+def insert_epochs(driver: Driver, epochs: List[Epoch]):
     """
     Insert epochs into graph.
+    :param driver:
     :param epochs:
     :return:
     """
-    driver = connect_neo4j()
-
     with driver.session() as session:
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Epoch) REQUIRE e.no IS UNIQUE")
 
@@ -43,7 +42,7 @@ def insert_epochs(epochs: List[Epoch]):
             for epoch in epochs
         ]
 
-        session.run(
+        result = session.run(
             """
             UNWIND $epoch_data AS data
             MERGE (e:Epoch {no: data.no})
@@ -54,25 +53,36 @@ def insert_epochs(epochs: List[Epoch]):
             """,
             {"epoch_data": epoch_data}
         )
-        logging.info(f"Inserted {len(epochs)} epochs into graph")
+        summary = result.consume()
+        logging.info(
+            f"Inserted {summary.counters.nodes_created} nodes, {summary.counters.nodes_deleted} nodes deleted.")
 
-    driver.close()
+        # Create relationships between consecutive epochs
+        result = session.run(
+            """
+            MATCH (e1:Epoch), (e2:Epoch)
+            WHERE e1.no = e2.no - 1
+            MERGE (e1)-[:HAS_SUCCESSOR]->(e2)
+            """
+        )
+
+        summary = result.consume()
+        logging.info(f"Created {summary.counters.relationships_created} HAS_SUCCESSOR relationships.")
 
 
-def insert_blocks(blocks: List[Block]):
+def insert_blocks(driver: Driver, blocks: List[Block]):
     """
     Insert blocks into graph.
+    :param driver:
     :param blocks: List of blocks with their properties.
     """
-    driver = connect_neo4j()
-
     with driver.session() as session:
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (b:Block) REQUIRE b.hash IS UNIQUE;")
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Epoch) REQUIRE e.no IS UNIQUE;")
 
         blocks_data = [
             {
-                "hash": block.hash,
+                "hash": block.hash.hex(),
                 "block_id": block.id,
                 "epoch_no": block.epoch_no,
                 "slot_no": block.slot_no,
@@ -94,7 +104,7 @@ def insert_blocks(blocks: List[Block]):
 
         logging.info(f"Inserting {len(blocks)} blocks into graph")
 
-        session.run(
+        result = session.run(
             """
             UNWIND $blocks_data AS block
             MERGE (b:Block {hash: block.hash})
@@ -132,24 +142,21 @@ def insert_blocks(blocks: List[Block]):
             WITH block
             MATCH (b:Block {hash: block.hash})
             MATCH (b2:Block) WHERE b2.id = block.previous_id
-            MERGE (b2)-[:PRECEDES]->(b)
+            MERGE (b)-[:HAS_PREVIOUS_BLOCK]->(b2)
 
             WITH block
             MATCH (e:Epoch {no: block.epoch_no})
             MATCH (b:Block {hash: block.hash})
-            MERGE (e)-[:CONTAINS]->(b)
+            MERGE (e)-[:HAS_BLOCK]->(b)
             """,
             {"blocks_data": blocks_data}
         )
+        summary = result.consume()
+        logging.info(f"Inserted {summary.counters.nodes_created} block nodes, {summary.counters.nodes_deleted} block "
+                     f"nodes deleted. Created {summary.counters.relationships_created} relationships.")
 
-        logging.info(f"Inserted {len(blocks)} blocks into graph")
 
-    driver.close()
-
-
-def insert_utxos(transactions: Dict[str, Transaction], batch_size: int = 1000):
-    driver = connect_neo4j()
-
+def insert_utxos(driver: Driver, transactions: Dict[str, Transaction], batch_size: int = 1000):
     with driver.session() as session:
         # Create constraints to ensure uniqueness of addresses, transactions, stake addresses, and UTXOs
         session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (a:Address) REQUIRE a.address IS UNIQUE")
@@ -343,8 +350,6 @@ def insert_utxos(transactions: Dict[str, Transaction], batch_size: int = 1000):
             process_batch(batch)
             logging.info(f"Processed batch of size {len(batch)}")
 
-    driver.close()
-
 
 def parse_timestamp(ts: str) -> str:
     return datetime.datetime.strptime(ts, '%Y-%m-%dT%H:%M:%S').isoformat()
@@ -504,3 +509,90 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
             edges.append(Edge(from_address=record["address"], to_address=record["stake_address"], type="STAKE"))
 
     return GraphData(nodes=nodes, edges=edges)
+
+
+def get_address_details(driver: Driver, address_hash: str) -> Dict[str, Any]:
+    query = """
+    MATCH (a:Address {address: $address_hash})-[:OWNS]->(u:UTXO)
+    OPTIONAL MATCH (u)-[:INPUT]->(t:Transaction)
+    RETURN a.address AS address, collect(distinct u) AS utxos, collect(distinct t) AS transactions
+    """
+    with driver.session() as session:
+        result = session.run(query, {"address_hash": address_hash})
+        record = result.single()
+        if record:
+            return {
+                "address": record["address"],
+                "utxos": record["utxos"],
+                "transactions": record["transactions"]
+            }
+        return {}
+
+
+def get_transaction_details(driver: Driver, transaction_hash: str) -> Dict[str, Any]:
+    query = """
+    MATCH (t:Transaction {tx_hash: $transaction_hash})-[r]->(n)
+    RETURN t, collect(r), collect(n)
+    """
+    with driver.session() as session:
+        result = session.run(query, {"transaction_hash": transaction_hash})
+        record = result.single()
+        if record:
+            return {
+                "transaction": record["t"],
+                "relationships": record["collect(r)"],
+                "nodes": record["collect(n)"]
+            }
+        return {}
+
+
+def get_asset_details(driver: Driver, asset_id: str) -> Dict[str, Any]:
+    query = """
+    MATCH (a:Asset {asset_id: $asset_id})-[:USED_IN]->(t:Transaction)
+    RETURN a, collect(t) AS transactions
+    """
+    with driver.session() as session:
+        result = session.run(query, {"asset_id": asset_id})
+        record = result.single()
+        if record:
+            return {
+                "asset": record["a"],
+                "transactions": record["transactions"]
+            }
+        return {}
+
+
+def get_block_details(driver: Driver, block_hash: str) -> Dict[str, Any]:
+    query = """
+    MATCH (b:Block {hash: $block_hash})-[:CONTAINS]->(t:Transaction)
+    MATCH (b)-[:HAS_BLOCK]->(e:Epoch)
+    RETURN b, collect(t) AS transactions, e
+    """
+    with driver.session() as session:
+        result = session.run(query, {"block_hash": block_hash})
+        record = result.single()
+        if record:
+            return {
+                "block": record["b"],
+                "transactions": record["transactions"],
+                "epoch": record["e"]
+            }
+        return {}
+
+
+def get_epoch_details(driver: Driver, epoch_no: int) -> Dict[str, Any]:
+    query = """
+    MATCH (e:Epoch {no: $epoch_no})-[:HAS_BLOCK]->(b:Block)
+    RETURN e, count(b) AS block_count, sum(b.tx_count) AS tx_count, sum(b.size) AS total_size
+    """
+    with driver.session() as session:
+        result = session.run(query, {"epoch_no": epoch_no})
+        record = result.single()
+        if record:
+            return {
+                "epoch": record["e"],
+                "block_count": record["block_count"],
+                "tx_count": record["tx_count"],
+                "total_size": record["total_size"]
+            }
+        return {}

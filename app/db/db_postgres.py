@@ -1,13 +1,11 @@
 import logging
-from typing import List, Dict, Any
+from typing import List
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.operators import and_
 
-from app.db.connections import connect_postgres
-from app.db.models.base import Block, Epoch, TransactionIn, Transaction, TransactionOut, MultiAssetTransactionOut, \
-    MultiAsset, StakeAddress
+from app.db.models.base import Block, Epoch, TransactionIn, Transaction, TransactionOut, StakeAddress
 from app.models.transactions import InputUTXO, OutputUTXO
 
 
@@ -41,11 +39,12 @@ def fetch_epochs(session: Session, start_time: str, end_time: str) -> List[Epoch
     logging.info(f"Fetching epochs between: {start_time} - {end_time}")
     epochs = session.query(Epoch).filter(
         and_(Epoch.start_time >= start_time, Epoch.end_time <= end_time)
-    ).all()
+    ).order_by(Epoch.no).all()
 
     logging.info(f"Fetched: {len(epochs)} epochs between {start_time} - {end_time}")
 
     return epochs
+
 
 def fetch_input_utxos(session: Session, start: str, end: str) -> List[InputUTXO]:
     logging.info(f"Fetching input UTXOs between: {start} - {end}")
@@ -157,8 +156,11 @@ def fetch_output_utxos(session: Session, start: str, end: str) -> List[OutputUTX
             TransactionOut.stake_address_id.label('stake_address_id'),
             StakeAddress.view.label('stake_address')
         )
-        .join(TransactionIn, (TransactionIn.tx_out_id == TransactionOut.tx_id) & (TransactionIn.tx_out_index == TransactionOut.index), isouter=True)  # Consuming UTXO
-        .join(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id, isouter=True)  # Consuming transaction
+        .join(TransactionIn,
+              (TransactionIn.tx_out_id == TransactionOut.tx_id) & (TransactionIn.tx_out_index == TransactionOut.index),
+              isouter=True)  # Consuming UTXO
+        .join(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id,
+              isouter=True)  # Consuming transaction
         .join(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id, isouter=True)  # Consuming block
         .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)  # Creating transaction
         .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)  # Creating block

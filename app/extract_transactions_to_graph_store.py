@@ -3,15 +3,16 @@ import logging
 
 from sqlalchemy.orm import sessionmaker
 
-from app.db.connections import connect_postgres
+from app.db.connections import connect_postgres, connect_neo4j
 from app.db.db_neo4j import clear_neo4j_database, insert_blocks, insert_epochs
 from app.db.db_postgres import fetch_blocks, fetch_epochs
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(asctime)s - %(message)s")
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] - %(asctime)s - %(message)s")
 
     Session = sessionmaker(bind=connect_postgres())
+    driver = connect_neo4j()
 
     # Clear existing data
     clear_neo4j_database()
@@ -22,22 +23,23 @@ def main():
     with Session() as session:
         try:
             epochs = fetch_epochs(session, start.isoformat(), end.isoformat())
-            insert_epochs(epochs)
+            insert_epochs(driver, epochs)
         except Exception as e:
             logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
 
-    end = start + datetime.timedelta(weeks=1)
+    end = start + datetime.timedelta(days=1)
+
     # Process blocks
-    for i in range(0, 416):
+    for i in range(0, 2500):
         with Session() as session:
             try:
                 blocks = fetch_blocks(session, start.isoformat(), end.isoformat())
-                insert_blocks(blocks)
+                insert_blocks(driver, blocks)
             except Exception as e:
-                logging.error(f"Week {i + 1}: Error processing blocks from {start} to {end}: {e}", exc_info=True)
+                logging.error(f"Day {i + 1}: Error processing blocks from {start} to {end}: {e}", exc_info=True)
 
         start = end
-        end = start + datetime.timedelta(weeks=1)
+        end = start + datetime.timedelta(days=1)
 
     # start = datetime.datetime(2021, 1, 1)
     # end = datetime.datetime(2021, 1, 2)
