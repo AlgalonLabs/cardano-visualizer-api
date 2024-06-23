@@ -40,12 +40,12 @@ def api_get_asset_details(asset_id: str, driver: Driver = Depends(get_neo4j_driv
     return get_asset_details(driver, asset_id)
 
 
-@router.get("/block/{block_hash}", response_model=BlockDetails)
+@router.get("/blocks/{block_hash}", response_model=BlockDetails)
 def api_get_block_details(block_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> BlockDetails:
     return get_block_details(driver, block_hash)
 
 
-@router.get("/epoch/{epoch_no}", response_model=EpochDetails)
+@router.get("/epochs/{epoch_no}", response_model=EpochDetails)
 def api_get_epoch_details(epoch_no: int, driver: Driver = Depends(get_neo4j_driver)) -> EpochDetails:
     return get_epoch_details(driver, epoch_no)
 

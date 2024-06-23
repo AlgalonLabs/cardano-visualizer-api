@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from typing import Optional
 
+import neo4j
 from neo4j import Driver
 
 from app.db.connections import connect_neo4j
@@ -18,6 +19,18 @@ def clear_neo4j_database():
     with driver.session() as session:
         session.run("MATCH (n) DETACH DELETE n")
     driver.close()
+
+
+def serialize_value(value):
+    if isinstance(value, neo4j.time.DateTime):
+        return value.iso_format()
+    return value
+
+
+def serialize_node(node):
+    if node is None:
+        return None
+    return {key: serialize_value(value) for key, value in dict(node).items()}
 
 
 def insert_epochs(driver: Driver, epochs: List[Epoch]):
@@ -564,8 +577,9 @@ def get_asset_details(driver: Driver, asset_id: str) -> Dict[str, Any]:
 
 def get_block_details(driver: Driver, block_hash: str) -> Dict[str, Any]:
     query = """
-    MATCH (b:Block {hash: $block_hash})-[:CONTAINS]->(t:Transaction)
-    MATCH (b)-[:HAS_BLOCK]->(e:Epoch)
+    MATCH (b:Block {hash: $block_hash})
+    OPTIONAL MATCH (b)-[:CONTAINS]->(t:Transaction)
+    OPTIONAL MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
     RETURN b, collect(t) AS transactions, e
     """
     with driver.session() as session:
@@ -573,16 +587,17 @@ def get_block_details(driver: Driver, block_hash: str) -> Dict[str, Any]:
         record = result.single()
         if record:
             return {
-                "block": record["b"],
-                "transactions": record["transactions"],
-                "epoch": record["e"]
+                "block": serialize_node(record.get("b")),
+                "transactions": [serialize_node(tx) for tx in record.get("transactions", [])],
+                "epoch": serialize_node(record.get("e"))
             }
-        return {}
+        return {"block": {}, "transactions": [], "epoch": {}}
 
 
 def get_epoch_details(driver: Driver, epoch_no: int) -> Dict[str, Any]:
     query = """
-    MATCH (e:Epoch {no: $epoch_no})-[:HAS_BLOCK]->(b:Block)
+    MATCH (e:Epoch {no: $epoch_no})
+    OPTIONAL MATCH (e)-[:HAS_BLOCK]->(b:Block)
     RETURN e, count(b) AS block_count, sum(b.tx_count) AS tx_count, sum(b.size) AS total_size
     """
     with driver.session() as session:
@@ -590,12 +605,12 @@ def get_epoch_details(driver: Driver, epoch_no: int) -> Dict[str, Any]:
         record = result.single()
         if record:
             return {
-                "epoch": record["e"],
+                "epoch": serialize_node(record["e"]),
                 "block_count": record["block_count"],
                 "tx_count": record["tx_count"],
                 "total_size": record["total_size"]
             }
-        return {}
+        return {"epoch": {}, "block_count": 0, "tx_count": 0, "total_size": 0}
 
 
 def get_blocks(driver: Driver, skip: int, limit: int) -> Blocks:
