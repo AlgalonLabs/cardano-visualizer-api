@@ -596,3 +596,55 @@ def get_epoch_details(driver: Driver, epoch_no: int) -> Dict[str, Any]:
                 "total_size": record["total_size"]
             }
         return {}
+
+
+def get_blocks(driver: Driver, skip: int, limit: int) -> List[Dict[str, Any]]:
+    query = """
+    MATCH (b:Block)
+    RETURN {
+        hash: b.hash,
+        block_id: b.id,
+        epoch_no: b.epoch_no,
+        slot_no: b.slot_no,
+        epoch_slot_no: b.epoch_slot_no,
+        block_no: b.block_no,
+        previous_id: b.previous_id,
+        slot_leader_id: b.slot_leader_id,
+        size: b.size,
+        time: toString(b.time),
+        tx_count: b.tx_count,
+        proto_major: b.proto_major,
+        proto_minor: b.proto_minor,
+        vrf_key: b.vrf_key,
+        op_cert: b.op_cert,
+        op_cert_counter: b.op_cert_counter
+    } AS block
+    SKIP $skip
+    LIMIT $limit
+    """
+    with driver.session() as session:
+        result = session.run(query, {"skip": skip, "limit": limit})
+        blocks = [record["block"] for record in result]
+        return blocks
+
+
+def get_epochs(driver: Driver, skip: int, limit: int) -> List[Dict[str, Any]]:
+    query = """
+    MATCH (e:Epoch)
+    OPTIONAL MATCH (e)-[r:HAS_BLOCK]->(b:Block)
+    WITH e, COUNT(r) AS block_count
+    RETURN {
+        no: e.no,
+        out_sum: e.out_sum,
+        fees: e.fees,
+        start_time: toString(e.start_time),
+        end_time: toString(e.end_time),
+        block_count: block_count
+    } AS epoch
+    SKIP $skip
+    LIMIT $limit
+    """
+    with driver.session() as session:
+        result = session.run(query, {"skip": skip, "limit": limit})
+        epochs = [record["epoch"] for record in result]
+        return epochs

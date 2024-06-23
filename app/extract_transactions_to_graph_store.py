@@ -13,24 +13,23 @@ def main():
 
     Session = sessionmaker(bind=connect_postgres())
     driver = connect_neo4j()
-
     # Clear existing data
-    clear_neo4j_database()
-
-    start = datetime.datetime(2017, 9, 23)
-    end = datetime.datetime(2024, 5, 4)
+    # clear_neo4j_database()
+    # start = datetime.datetime(2018, 9, 23)
+    # end = datetime.datetime(2024, 5, 4)
     # Process epochs
-    with Session() as session:
-        try:
-            epochs = fetch_epochs(session, start.isoformat(), end.isoformat())
-            insert_epochs(driver, epochs)
-        except Exception as e:
-            logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
-
+    # with Session() as session:
+    #     try:
+    #         epochs = fetch_epochs(session, start.isoformat(), end.isoformat())
+    #         insert_epochs(driver, epochs)
+    #     except Exception as e:
+    #         logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
+    #
+    start = datetime.datetime(2018, 4, 30)
     end = start + datetime.timedelta(days=1)
 
     # Process blocks
-    for i in range(0, 2500):
+    for i in range(0, 2200):
         with Session() as session:
             try:
                 blocks = fetch_blocks(session, start.isoformat(), end.isoformat())
