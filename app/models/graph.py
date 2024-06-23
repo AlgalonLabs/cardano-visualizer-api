@@ -68,3 +68,13 @@ class EpochDetails(BaseModel):
     block_count: int
     tx_count: int
     total_size: int
+
+
+class Blocks(BaseModel):
+    blocks: List[Any]
+    total_count: int
+
+
+class Epochs(BaseModel):
+    epochs: List[Any]
+    total_count: int

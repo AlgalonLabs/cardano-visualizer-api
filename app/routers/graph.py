@@ -1,11 +1,12 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from neo4j import Driver
 
 from app.db.db_neo4j import get_graph_by_asset, get_graph_by_address, get_address_details, get_transaction_details, \
     get_asset_details, get_block_details, get_epoch_details, get_blocks, get_epochs
-from app.models.graph import GraphData, AddressDetails, TransactionDetails, AssetDetails, BlockDetails, EpochDetails
+from app.models.graph import GraphData, AddressDetails, TransactionDetails, AssetDetails, BlockDetails, EpochDetails, \
+    Blocks, Epochs
 from app.routers.dependencies import get_neo4j_driver
 
 router = APIRouter()
@@ -49,11 +50,13 @@ def api_get_epoch_details(epoch_no: int, driver: Driver = Depends(get_neo4j_driv
     return get_epoch_details(driver, epoch_no)
 
 
-@router.get("/blocks", response_model=List[Dict[str, Any]])
-def api_get_blocks(skip: int = 0, limit: int = 100, driver: Driver = Depends(get_neo4j_driver)) -> List[Dict[str, Any]]:
+@router.get("/blocks", response_model=Blocks)
+def api_get_blocks(skip: int = Query(0, alias='skip'), limit: int = Query(10, alias='limit'),
+                   driver: Driver = Depends(get_neo4j_driver)) -> Blocks:
     return get_blocks(driver, skip, limit)
 
 
-@router.get("/epochs", response_model=List[Dict[str, Any]])
-def api_get_epochs(skip: int = 0, limit: int = 100, driver: Driver = Depends(get_neo4j_driver)) -> List[Dict[str, Any]]:
+@router.get("/epochs", response_model=Epochs)
+def api_get_epochs(skip: int = Query(0, alias='skip'), limit: int = Query(10, alias='limit'),
+                   driver: Driver = Depends(get_neo4j_driver)) -> Epochs:
     return get_epochs(driver, skip, limit)

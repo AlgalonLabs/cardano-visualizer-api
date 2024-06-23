@@ -7,7 +7,7 @@ from neo4j import Driver
 
 from app.db.connections import connect_neo4j
 from app.db.models.base import Epoch, Block
-from app.models.graph import Edge, GraphData, Node, AddressNode, TransactionNode, StakeAddressNode
+from app.models.graph import Edge, GraphData, Node, AddressNode, TransactionNode, StakeAddressNode, Blocks, Epochs
 from app.models.transactions import Transaction
 from app.utils.currency_converter import CurrencyConverter
 
@@ -598,7 +598,7 @@ def get_epoch_details(driver: Driver, epoch_no: int) -> Dict[str, Any]:
         return {}
 
 
-def get_blocks(driver: Driver, skip: int, limit: int) -> List[Dict[str, Any]]:
+def get_blocks(driver: Driver, skip: int, limit: int) -> Blocks:
     query = """
     MATCH (b:Block)
     RETURN {
@@ -619,17 +619,25 @@ def get_blocks(driver: Driver, skip: int, limit: int) -> List[Dict[str, Any]]:
         op_cert: b.op_cert,
         op_cert_counter: b.op_cert_counter
     } AS block
+    ORDER BY b.block_no DESC
     SKIP $skip
     LIMIT $limit
     """
+
+    query_count = "MATCH (e:Block) RETURN COUNT(e) AS total_count"
+
     with driver.session() as session:
+        total_count_result = session.run(query_count)
+        total_count = total_count_result.single()["total_count"]
+
         result = session.run(query, {"skip": skip, "limit": limit})
         blocks = [record["block"] for record in result]
-        return blocks
+
+    return {"blocks": blocks, "total_count": total_count}
 
 
-def get_epochs(driver: Driver, skip: int, limit: int) -> List[Dict[str, Any]]:
-    query = """
+def get_epochs(driver: Driver, skip: int, limit: int) -> Epochs:
+    query_data = """
     MATCH (e:Epoch)
     OPTIONAL MATCH (e)-[r:HAS_BLOCK]->(b:Block)
     WITH e, COUNT(r) AS block_count
@@ -641,10 +649,18 @@ def get_epochs(driver: Driver, skip: int, limit: int) -> List[Dict[str, Any]]:
         end_time: toString(e.end_time),
         block_count: block_count
     } AS epoch
+    ORDER BY e.no DESC
     SKIP $skip
     LIMIT $limit
     """
+
+    query_count = "MATCH (e:Epoch) RETURN COUNT(e) AS total_count"
+
     with driver.session() as session:
-        result = session.run(query, {"skip": skip, "limit": limit})
+        total_count_result = session.run(query_count)
+        total_count = total_count_result.single()["total_count"]
+
+        result = session.run(query_data, {"skip": skip, "limit": limit})
         epochs = [record["epoch"] for record in result]
-        return epochs
+
+    return {"epochs": epochs, "total_count": total_count}
