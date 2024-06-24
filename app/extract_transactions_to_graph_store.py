@@ -25,7 +25,7 @@ def main():
     #     except Exception as e:
     #         logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
     #
-    start = datetime.datetime(2018, 4, 30)
+    start = datetime.datetime(2018, 5, 21)
     end = start + datetime.timedelta(days=1)
 
     # Process blocks

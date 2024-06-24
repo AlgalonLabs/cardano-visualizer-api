@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.connections import connect_neo4j
-from app.routers import graph
+from app.routers import graph, dashboard
 
 app = FastAPI()
 
@@ -21,3 +21,4 @@ app.add_middleware(
 )
 
 app.include_router(graph.router)
+app.include_router(dashboard.router)
