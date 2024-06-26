@@ -20,10 +20,12 @@ def serialize_value(value):
     return value
 
 
-def serialize_node(node):
+def serialize_node(node, exclude_keys=None):
     if node is None:
         return None
-    return {key: serialize_value(value) for key, value in dict(node).items()}
+    if exclude_keys is None:
+        exclude_keys = []
+    return {key: serialize_value(value) for key, value in dict(node).items() if key not in exclude_keys}
 
 
 def parse_timestamp(ts: str) -> str:

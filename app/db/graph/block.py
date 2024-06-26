@@ -94,6 +94,56 @@ def insert_blocks(driver: Driver, blocks: List[Block]):
                      f"nodes deleted. Created {summary.counters.relationships_created} relationships.")
 
 
+# def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> GraphData:
+#     nodes: List[BaseNode] = []
+#     edges: List[BaseEdge] = []
+#
+#     query = """
+#     MATCH (b:Block {hash: $block_hash})
+#     OPTIONAL MATCH (b)-[:CONTAINS]->(t:Transaction)
+#     OPTIONAL MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
+#     OPTIONAL MATCH path = (b)-[:HAS_PREVIOUS_BLOCK*1..10]->(prev:Block)
+#     WHERE length(path) <= $depth
+#     WITH b, collect(t) AS transactions, e, collect(nodes(path)) AS prev_blocks
+#     RETURN b, transactions, e, prev_blocks
+#     """
+#
+#     with driver.session() as session:
+#         result = session.run(query, {"block_hash": block_hash, "depth": depth})
+#         record = result.single()
+#
+#         if record:
+#             main_block = record["b"]
+#             transactions = record["transactions"]
+#             epoch = record["e"]
+#             prev_blocks = [block for path in record["prev_blocks"] for block in path]
+#
+#             # Add main block node
+#             nodes.append(BlockNode(id=main_block["hash"], type="Block", **serialize_node(main_block)))
+#
+#             # Add transaction nodes
+#             for tx in transactions:
+#                 nodes.append(TransactionNode(id=tx["hash"], type="Transaction", **serialize_node(tx)))
+#                 edges.append(BaseEdge(from_address=main_block["hash"], to_address=tx["hash"], type="CONTAINS"))
+#
+#             # Add epoch node
+#             if epoch:
+#                 nodes.append(EpochNode(id=f"epoch_{epoch['no']}", type="Epoch", **serialize_node(epoch)))
+#                 edges.append(
+#                     BaseEdge(from_address=f"epoch_{epoch['no']}", to_address=main_block["hash"], type="HAS_BLOCK"))
+#
+#             # Add previous block nodes and edges
+#             for prev_block in prev_blocks:
+#                 if not any(node.id == prev_block["hash"] for node in nodes):
+#                     nodes.append(BlockNode(id=prev_block["hash"], type="Block", **serialize_node(prev_block)))
+#                 if prev_block["hash"] != main_block["hash"]:
+#                     edges.append(
+#                         BaseEdge(from_address=main_block["hash"], to_address=prev_block["hash"],
+#                                  type="HAS_PREVIOUS_BLOCK"))
+#                     main_block = prev_block  # Update main_block for the next iteration
+#
+#     return GraphData(nodes=nodes, edges=edges)
+
 def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> GraphData:
     nodes: List[BaseNode] = []
     edges: List[BaseEdge] = []
@@ -102,7 +152,8 @@ def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> 
     MATCH (b:Block {hash: $block_hash})
     OPTIONAL MATCH (b)-[:CONTAINS]->(t:Transaction)
     OPTIONAL MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
-    OPTIONAL MATCH path = (b)-[:HAS_PREVIOUS_BLOCK*1..{depth}]->(prev:Block)
+    OPTIONAL MATCH path = (b)-[:HAS_PREVIOUS_BLOCK*1..10]->(prev:Block)
+    WHERE length(path) <= $depth
     WITH b, collect(t) AS transactions, e, collect(nodes(path)) AS prev_blocks
     RETURN b, transactions, e, prev_blocks
     """
@@ -118,23 +169,27 @@ def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> 
             prev_blocks = [block for path in record["prev_blocks"] for block in path]
 
             # Add main block node
-            nodes.append(BlockNode(id=main_block["hash"], type="Block", **serialize_node(main_block)))
+            nodes.append(
+                BlockNode(id=main_block["hash"], type="Block", **serialize_node(main_block, exclude_keys=['id'])))
 
             # Add transaction nodes
             for tx in transactions:
-                nodes.append(TransactionNode(id=tx["hash"], type="Transaction", **serialize_node(tx)))
+                nodes.append(
+                    TransactionNode(id=tx["hash"], type="Transaction", **serialize_node(tx, exclude_keys=['id'])))
                 edges.append(BaseEdge(from_address=main_block["hash"], to_address=tx["hash"], type="CONTAINS"))
 
             # Add epoch node
             if epoch:
-                nodes.append(EpochNode(id=f"epoch_{epoch['no']}", type="Epoch", **serialize_node(epoch)))
+                nodes.append(
+                    EpochNode(id=f"epoch_{epoch['no']}", type="Epoch", **serialize_node(epoch, exclude_keys=['id'])))
                 edges.append(
                     BaseEdge(from_address=f"epoch_{epoch['no']}", to_address=main_block["hash"], type="HAS_BLOCK"))
 
             # Add previous block nodes and edges
             for prev_block in prev_blocks:
                 if not any(node.id == prev_block["hash"] for node in nodes):
-                    nodes.append(BlockNode(id=prev_block["hash"], type="Block", **serialize_node(prev_block)))
+                    nodes.append(BlockNode(id=prev_block["hash"], type="Block",
+                                           **serialize_node(prev_block, exclude_keys=['id'])))
                 if prev_block["hash"] != main_block["hash"]:
                     edges.append(
                         BaseEdge(from_address=main_block["hash"], to_address=prev_block["hash"],

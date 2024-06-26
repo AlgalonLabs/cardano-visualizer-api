@@ -1,7 +1,16 @@
+from typing import Optional, List
+
+from neo4j import Driver
+
+from app.db.graph.db_neo4j import parse_timestamp
+from app.models.graph import GraphData, BaseNode, BaseEdge, AddressNode, TransactionNode, StakeAddressNode, \
+    AddressDetails
+
+
 def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str] = None,
                          end_time: Optional[str] = None) -> GraphData:
-    nodes: List[Node] = []
-    edges: List[Edge] = []
+    nodes: List[BaseNode] = []
+    edges: List[BaseEdge] = []
 
     query = """
     MATCH (a:Address {address: $address})-[r:INPUT_TRANSACTION]->(t:Transaction)
@@ -70,8 +79,8 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
             if not any(node["id"] == to_address for node in nodes):
                 nodes.append(AddressNode(id=to_address, type="Address", label=to_address))
 
-            edges.append(Edge(from_address=from_address, to_address=tx_hash, type="INPUT_TRANSACTION"))
-            edges.append(Edge(from_address=tx_hash, to_address=to_address, type="OUTPUT_TRANSACTION"))
+            edges.append(BaseEdge(from_address=from_address, to_address=tx_hash, type="INPUT_TRANSACTION"))
+            edges.append(BaseEdge(from_address=tx_hash, to_address=to_address, type="OUTPUT_TRANSACTION"))
 
     stake_query = """
     MATCH (a:Address {address: $address})-[:STAKE]->(s:StakeAddress)
@@ -85,12 +94,12 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
                 nodes.append(
                     StakeAddressNode(id=record["stake_address"], type="StakeAddress", label=record["stake_address"]))
 
-            edges.append(Edge(from_address=record["address"], to_address=record["stake_address"], type="STAKE"))
+            edges.append(BaseEdge(from_address=record["address"], to_address=record["stake_address"], type="STAKE"))
 
     return GraphData(nodes=nodes, edges=edges)
 
 
-def get_address_details(driver: Driver, address_hash: str) -> Dict[str, Any]:
+def get_address_details(driver: Driver, address_hash: str) -> AddressDetails:
     query = """
     MATCH (a:Address {address: $address_hash})-[:OWNS]->(u:UTXO)
     OPTIONAL MATCH (u)-[:INPUT]->(t:Transaction)

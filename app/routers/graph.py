@@ -27,11 +27,9 @@ def api_get_graph_by_address(address: str, start_time: Optional[str] = None, end
     return get_graph_by_address(driver, address, start_time, end_time)
 
 
-@router.get("/graph/blocks/{hash}", response_model=GraphData)
-def api_get_graph_by_block_hash(block_hash: str, start_time: Optional[str] = None, end_time: Optional[str] = None,
-                                driver: Driver = Depends(get_neo4j_driver)) -> GraphData:
-    # need to implement this
-    return get_graph_by_block_hash(driver, block_hash, start_time, end_time)
+@router.get("/graph/blocks/{block_hash}", response_model=GraphData)
+def api_get_graph_by_block_hash(block_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> GraphData:
+    return get_graph_by_block_hash(driver, block_hash, 1)
 
 
 @router.get("/address/{address_hash}", response_model=AddressDetails)
