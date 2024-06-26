@@ -3,8 +3,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from neo4j import Driver
 
-from app.db.db_neo4j import get_graph_by_asset, get_graph_by_address, get_address_details, get_transaction_details, \
-    get_asset_details, get_block_details, get_epoch_details, get_blocks, get_epochs
+from app.db.graph.address import get_graph_by_address, get_address_details
+from app.db.graph.asset import get_graph_by_asset, get_asset_details
+from app.db.graph.block import get_graph_by_block_hash, get_block_details, get_blocks
+from app.db.graph.epoch import get_epoch_details
+from app.db.graph.transaction import get_transaction_details
 from app.models.graph import GraphData, AddressDetails, TransactionDetails, AssetDetails, BlockDetails, EpochDetails, \
     Blocks, Epochs
 from app.routers.dependencies import get_neo4j_driver
@@ -22,6 +25,13 @@ def api_get_graph_by_asset(asset_id: str, start_time: Optional[str] = None, end_
 def api_get_graph_by_address(address: str, start_time: Optional[str] = None, end_time: Optional[str] = None,
                              driver: Driver = Depends(get_neo4j_driver)) -> GraphData:
     return get_graph_by_address(driver, address, start_time, end_time)
+
+
+@router.get("/graph/blocks/{hash}", response_model=GraphData)
+def api_get_graph_by_block_hash(block_hash: str, start_time: Optional[str] = None, end_time: Optional[str] = None,
+                                driver: Driver = Depends(get_neo4j_driver)) -> GraphData:
+    # need to implement this
+    return get_graph_by_block_hash(driver, block_hash, start_time, end_time)
 
 
 @router.get("/address/{address_hash}", response_model=AddressDetails)

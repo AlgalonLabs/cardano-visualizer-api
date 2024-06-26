@@ -1,45 +1,72 @@
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Any, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class AddressNode(BaseModel):
+# Base Models
+class BaseNode(BaseModel):
     id: str
     type: str
-    label: str
 
 
-class TransactionNode(BaseModel):
-    id: str
-    type: str
-    tx_hash: str
-    timestamp: str
-    value: int
-    asset_policy: Optional[str]
-    asset_name: Optional[str]
-    asset_quantity: Optional[int]
-
-
-class StakeAddressNode(BaseModel):
-    id: str
-    type: str
-    label: str
-
-
-Node = Union[AddressNode, TransactionNode, StakeAddressNode]
-
-
-class Edge(BaseModel):
+class BaseEdge(BaseModel):
     from_address: str
     to_address: str
     type: str
 
 
-class GraphData(BaseModel):
-    nodes: List[Dict[str, Any]]
-    edges: List[Edge]
+class BaseGraphData(BaseModel):
+    nodes: List[BaseNode]
+    edges: List[BaseEdge]
 
 
+# Specific Node Types
+class AddressNode(BaseNode):
+    label: str
+
+
+class TransactionNode(BaseNode):
+    hash: str = Field(..., alias="tx_hash")
+    timestamp: str
+    value: int
+    asset_policy: Optional[str] = None
+    asset_name: Optional[str] = None
+    asset_quantity: Optional[int] = None
+    fee: Optional[float] = None
+    valid_contract: Optional[bool] = None
+    script_size: Optional[int] = None
+
+
+class StakeAddressNode(BaseNode):
+    label: str
+
+
+class BlockNode(BaseNode):
+    hash: str
+    block_no: int
+    epoch_no: int
+    slot_no: int
+    time: str
+    tx_count: int
+    size: int
+
+
+class EpochNode(BaseNode):
+    no: int
+    start_time: str
+    end_time: str
+
+
+# Union type for all possible node types
+Node = Union[AddressNode, TransactionNode, StakeAddressNode, BlockNode, EpochNode]
+
+
+# GraphData with specific Node type
+class GraphData(BaseGraphData):
+    nodes: List[Node]
+
+
+# Detail Models
 class AddressDetails(BaseModel):
     address: str
     utxos: List[Any]
@@ -70,11 +97,14 @@ class EpochDetails(BaseModel):
     total_size: int
 
 
-class Blocks(BaseModel):
+# List Models
+class PaginatedList(BaseModel):
+    total_count: int
+
+
+class Blocks(PaginatedList):
     blocks: List[Any]
-    total_count: int
 
 
-class Epochs(BaseModel):
+class Epochs(PaginatedList):
     epochs: List[Any]
-    total_count: int

@@ -4,8 +4,8 @@ import logging
 from sqlalchemy.orm import sessionmaker
 
 from app.db.connections import connect_postgres, connect_neo4j
-from app.db.db_neo4j import clear_neo4j_database, insert_blocks, insert_epochs
-from app.db.db_postgres import fetch_blocks, fetch_epochs
+from app.db.db_postgres import fetch_blocks
+from app.db.graph.block import insert_blocks
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
     #     except Exception as e:
     #         logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
     #
-    start = datetime.datetime(2018, 5, 21)
+    start = datetime.datetime(2018, 6, 13)
     end = start + datetime.timedelta(days=1)
 
     # Process blocks
