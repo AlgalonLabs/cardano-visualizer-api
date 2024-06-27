@@ -32,7 +32,7 @@ def api_get_graph_by_block_hash(block_hash: str, driver: Driver = Depends(get_ne
     return get_graph_by_block_hash(driver, block_hash, 1)
 
 
-@router.get("/address/{address_hash}", response_model=AddressDetails)
+@router.get("/addresses/{address_hash}", response_model=AddressDetails)
 def api_get_address_details(address_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> AddressDetails:
     return get_address_details(driver, address_hash)
 
