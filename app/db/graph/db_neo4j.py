@@ -29,4 +29,4 @@ def serialize_node(node, exclude_keys=None):
 
 
 def parse_timestamp(ts: str) -> str:
-    return datetime.datetime.strptime(ts, '%Y-%m-%dT%H:%M:%S').isoformat()
+    return datetime.strptime(ts, '%Y-%m-%dT%H:%M:%S').isoformat()

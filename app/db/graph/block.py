@@ -107,7 +107,6 @@ def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> 
     WITH b, collect(t) AS transactions, e, collect(nodes(path)) AS prev_blocks
     RETURN b, transactions, e, prev_blocks
     """
-
     with driver.session() as session:
         result = session.run(query, {"block_hash": block_hash, "depth": depth})
         record = result.single()
