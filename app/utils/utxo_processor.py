@@ -4,9 +4,7 @@ from typing import List, Dict, Any
 from app.models.transactions import InputUTXO, OutputUTXO, Transaction
 
 
-def process_utxos(inputs: List[Dict], outputs: List[Dict]) -> Dict[str, Transaction]:
-    inputs = [InputUTXO(**utxo) for utxo in inputs]
-    outputs = [OutputUTXO(**utxo) for utxo in outputs]
+def process_utxos(inputs: List[InputUTXO], outputs: List[OutputUTXO]) -> Dict[str, Transaction]:
     return group_transactions(inputs, outputs)
 
 

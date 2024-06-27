@@ -59,8 +59,7 @@ def fetch_input_utxos(session: Session, start: str, end: str) -> List[InputUTXO]
             TransactionIn.tx_in_id.label('tx_id'),
             ConsumingTransaction.hash.label('consuming_tx_hash'),
             CreatingTransaction.hash.label('creating_tx_hash'),
-            CreatingBlock.hash.label('creating_block_hash'),
-            ConsumingBlock.hash.label('consuming_block_hash'),
+            CreatingBlock.hash.label('block_hash'),
             CreatingTransaction.block_index,
             TransactionOut.id.label('tx_out_id'),
             TransactionOut.index.label('tx_out_index'),
@@ -68,21 +67,17 @@ def fetch_input_utxos(session: Session, start: str, end: str) -> List[InputUTXO]
             TransactionOut.value.label('input_value'),
             CreatingBlock.time.label('creating_timestamp'),
             ConsumingBlock.time.label('consuming_timestamp'),
-            # MultiAssetTransactionOut.quantity.label('asset_quantity'),
-            # MultiAsset.policy.label('asset_policy'),
-            # MultiAsset.name.label('asset_name'),
             TransactionOut.stake_address_id.label('stake_address_id'),
             StakeAddress.view.label('stake_address')
         )
-        .join(TransactionOut,
-              (TransactionIn.tx_out_id == TransactionOut.tx_id) & (TransactionIn.tx_out_index == TransactionOut.index))
+        .select_from(TransactionIn)
         .join(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id)  # Consuming transaction
         .join(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id)  # Consuming block
-        .join(CreatingBlock, CreatingBlock.id == TransactionOut.block_id)  # Creating block
+        .join(TransactionOut,
+              (TransactionIn.tx_out_id == TransactionOut.tx_id) & (TransactionIn.tx_out_index == TransactionOut.index))
         .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)  # Creating transaction
-        # .join(MultiAssetTransactionOut, MultiAssetTransactionOut.tx_out_id == TransactionOut.id, isouter=True)
-        # .join(MultiAsset, MultiAsset.id == MultiAssetTransactionOut.ident, isouter=True)
-        .join(StakeAddress, StakeAddress.id == TransactionOut.stake_address_id, isouter=True)
+        .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)  # Creating block
+        .outerjoin(StakeAddress, StakeAddress.id == TransactionOut.stake_address_id)
         .where(ConsumingBlock.time >= start, ConsumingBlock.time <= end)
     )
 
@@ -141,8 +136,7 @@ def fetch_output_utxos(session: Session, start: str, end: str) -> List[OutputUTX
             CreatingTransaction.id.label('tx_id'),
             CreatingTransaction.hash.label('creating_tx_hash'),
             ConsumingTransaction.hash.label('consuming_tx_hash'),
-            CreatingBlock.hash.label('creating_block_hash'),
-            ConsumingBlock.hash.label('consuming_block_hash'),
+            CreatingBlock.hash.label('block_hash'),
             CreatingTransaction.block_index,
             CreatingTransaction.fee,
             TransactionOut.index.label('tx_out_index'),
@@ -150,23 +144,18 @@ def fetch_output_utxos(session: Session, start: str, end: str) -> List[OutputUTX
             TransactionOut.value.label('output_value'),
             CreatingBlock.time.label('creating_timestamp'),
             ConsumingBlock.time.label('consuming_timestamp'),
-            # MultiAssetTransactionOut.quantity.label('asset_quantity'),
-            # MultiAsset.policy.label('asset_policy'),
-            # MultiAsset.name.label('asset_name'),
             TransactionOut.stake_address_id.label('stake_address_id'),
             StakeAddress.view.label('stake_address')
         )
-        .join(TransactionIn,
-              (TransactionIn.tx_out_id == TransactionOut.tx_id) & (TransactionIn.tx_out_index == TransactionOut.index),
-              isouter=True)  # Consuming UTXO
-        .join(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id,
-              isouter=True)  # Consuming transaction
-        .join(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id, isouter=True)  # Consuming block
+        .select_from(TransactionOut)
         .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)  # Creating transaction
         .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)  # Creating block
-        # .join(MultiAssetTransactionOut, MultiAssetTransactionOut.tx_out_id == TransactionOut.id, isouter=True)
-        # .join(MultiAsset, MultiAsset.id == MultiAssetTransactionOut.ident, isouter=True)
-        .join(StakeAddress, StakeAddress.id == TransactionOut.stake_address_id, isouter=True)
+        .outerjoin(TransactionIn,
+                   (TransactionIn.tx_out_id == TransactionOut.tx_id) &
+                   (TransactionIn.tx_out_index == TransactionOut.index))  # Consuming UTXO
+        .outerjoin(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id)  # Consuming transaction
+        .outerjoin(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id)  # Consuming block
+        .outerjoin(StakeAddress, StakeAddress.id == TransactionOut.stake_address_id)
         .where(CreatingBlock.time >= start, CreatingBlock.time <= end)
     )
 
