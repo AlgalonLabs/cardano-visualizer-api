@@ -6,7 +6,7 @@ from neo4j import Driver
 from app.db.graph.address import get_graph_by_address, get_address_details
 from app.db.graph.asset import get_graph_by_asset, get_asset_details
 from app.db.graph.block import get_graph_by_block_hash, get_block_details, get_blocks
-from app.db.graph.epoch import get_epoch_details
+from app.db.graph.epoch import get_epoch_details, get_epochs
 from app.db.graph.transaction import get_transaction_details
 from app.models.graph import GraphData, AddressDetails, TransactionDetails, AssetDetails, BlockDetails, EpochDetails, \
     Blocks, Epochs

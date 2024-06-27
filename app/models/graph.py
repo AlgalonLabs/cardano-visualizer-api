@@ -54,6 +54,8 @@ class BlockNode(BaseNode):
 class EpochNode(BaseNode):
     no: int
     start_time: str
+    fees: float
+    out_sum: float
     end_time: str
 
 

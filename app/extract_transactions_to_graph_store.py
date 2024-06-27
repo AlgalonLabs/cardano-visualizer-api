@@ -24,8 +24,7 @@ def main():
     #         insert_epochs(driver, epochs)
     #     except Exception as e:
     #         logging.error(f"Error processing epochs from {start} to {end}: {e}", exc_info=True)
-    #
-    start = datetime.datetime(2018, 6, 13)
+    start = datetime.datetime(2018, 9, 9)
     end = start + datetime.timedelta(days=1)
 
     # Process blocks
