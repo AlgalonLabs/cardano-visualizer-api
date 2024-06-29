@@ -1,10 +1,8 @@
 import logging
-from typing import List
 
 from neo4j import Driver
 
 from app.db.graph.db_neo4j import serialize_node
-from app.db.models.base import Epoch
 from app.models.graph import Epochs, EpochDetails
 from app.utils.currency_converter import CurrencyConverter
 

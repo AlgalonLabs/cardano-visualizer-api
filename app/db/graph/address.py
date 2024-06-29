@@ -1,12 +1,11 @@
-import binascii
 from typing import Optional, List
 
 from neo4j import Driver
 from pydantic import ValidationError
 
 from app.db.graph.db_neo4j import serialize_node, serialize_value
-from app.models.graph import GraphData, BaseEdge, AddressNode, TransactionNode, StakeAddressNode, \
-    AddressDetails, BlockNode, BaseNode
+from app.models.graph import BaseEdge, AddressNode, TransactionNode, AddressDetails, BaseNode, UTXONode, \
+    StakeAddressNode, GraphData
 
 
 def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str] = None,
@@ -15,28 +14,25 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
     edges: List[BaseEdge] = []
 
     query = """
-    MATCH (a:Address {address: $address})-[:OWNS]->(u:UTXO)-[:INPUT]->(t:Transaction)
-    OPTIONAL MATCH (t)-[:OUTPUT]->(u2:UTXO)-[:OWNS]->(b:Address)
-    OPTIONAL MATCH (t)-[:CONTAINED_BY]->(block:Block)
+    MATCH (a:Address {address: $address})
+    OPTIONAL MATCH (a)-[:OWNS]->(u:UTXO)-[:INPUT]->(t:Transaction)
+    OPTIONAL MATCH (t)-[:OUTPUT]->(u2:UTXO)<-[:OWNS]-(b:Address)
     WHERE ($start_time IS NULL OR t.timestamp >= datetime($start_time))
       AND ($end_time IS NULL OR t.timestamp <= datetime($end_time))
-    RETURN a.address AS from_address, b.address AS to_address, t.tx_hash AS tx_hash, 
-           t.timestamp AS timestamp, t.fee AS fee,
-           u.value AS input_value, u2.value AS output_value, 
-           u.asset_policy AS asset_policy, u.asset_name AS asset_name, u.asset_quantity AS asset_quantity,
-           block.hash AS block_hash, block.block_no AS block_no, block.epoch_no AS epoch_no,
-           block.slot_no AS slot_no, block.time AS block_time, block.tx_count AS tx_count, block.size AS block_size
+    RETURN a.address AS address, u.utxo_hash AS input_utxo_hash, u.index AS input_utxo_index, u.value AS input_value,
+           u.asset_policy AS input_asset_policy, u.asset_name AS input_asset_name, u.asset_quantity AS input_asset_quantity,
+           t.tx_hash AS tx_hash, t.timestamp AS timestamp, t.fee AS fee,
+           b.address AS other_address, u2.utxo_hash AS output_utxo_hash, u2.index AS output_utxo_index, u2.value AS output_value,
+           u2.asset_policy AS output_asset_policy, u2.asset_name AS output_asset_name, u2.asset_quantity AS output_asset_quantity
     UNION
-    MATCH (b:Address)-[:OWNS]->(u:UTXO)<-[:OUTPUT]-(t:Transaction)<-[:INPUT]-(u2:UTXO)-[:OWNS]->(a:Address {address: $address})
-    OPTIONAL MATCH (t)-[:CONTAINED_BY]->(block:Block)
+    MATCH (b:Address)-[:OWNS]->(u:UTXO)<-[:OUTPUT]-(t:Transaction)<-[:INPUT]-(u2:UTXO)<-[:OWNS]-(a:Address {address: $address})
     WHERE ($start_time IS NULL OR t.timestamp >= datetime($start_time))
       AND ($end_time IS NULL OR t.timestamp <= datetime($end_time))
-    RETURN b.address AS from_address, a.address AS to_address, t.tx_hash AS tx_hash, 
-           t.timestamp AS timestamp, t.fee AS fee,
-           u2.value AS input_value, u.value AS output_value, 
-           u.asset_policy AS asset_policy, u.asset_name AS asset_name, u.asset_quantity AS asset_quantity,
-           block.hash AS block_hash, block.block_no AS block_no, block.epoch_no AS epoch_no,
-           block.slot_no AS slot_no, block.time AS block_time, block.tx_count AS tx_count, block.size AS block_size
+    RETURN a.address AS address, u2.utxo_hash AS input_utxo_hash, u2.index AS input_utxo_index, u2.value AS input_value,
+           u2.asset_policy AS input_asset_policy, u2.asset_name AS input_asset_name, u2.asset_quantity AS input_asset_quantity,
+           t.tx_hash AS tx_hash, t.timestamp AS timestamp, t.fee AS fee,
+           b.address AS other_address, u.utxo_hash AS output_utxo_hash, u.index AS output_utxo_index, u.value AS output_value,
+           u.asset_policy AS output_asset_policy, u.asset_name AS output_asset_name, u.asset_quantity AS output_asset_quantity
     """
 
     params = {'address': address, 'start_time': start_time, 'end_time': end_time}
@@ -44,16 +40,39 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
     with driver.session() as session:
         result = session.run(query, params)
         for record in result:
-            from_address = record["from_address"]
-            to_address = record["to_address"]
+            address = serialize_value(record["address"])
+            input_utxo_hash = f"{serialize_value(record["input_utxo_hash"])}_{record["input_utxo_index"]}"
+            tx_hash = serialize_value(record["tx_hash"])
+            other_address = serialize_value(record["other_address"])
+            output_utxo_hash = f"{serialize_value(record["output_utxo_hash"])}_{record["output_utxo_index"]}"
 
-            if isinstance(record["tx_hash"], bytes):
-                tx_hash = binascii.hexlify(record["tx_hash"]).decode('ascii')
-            else:
-                tx_hash = record["tx_hash"]
+            if not any(node.id == address for node in nodes):
+                nodes.append(AddressNode(id=address, type="Address", label=address))
+            if other_address and not any(node.id == other_address for node in nodes):
+                nodes.append(AddressNode(id=other_address, type="Address", label=other_address))
 
-            if from_address and not any(node.id == from_address for node in nodes):
-                nodes.append(AddressNode(id=from_address, type="Address", label=from_address))
+            if input_utxo_hash and not any(node.id == input_utxo_hash for node in nodes):
+                nodes.append(UTXONode(
+                    id=input_utxo_hash,
+                    type="UTXO",
+                    value=int(record["input_value"] or 0),
+                    asset_policy=serialize_value(record["input_asset_policy"]),
+                    asset_name=serialize_value(record["input_asset_name"]),
+                    asset_quantity=int(record["input_asset_quantity"] or 0)
+                ))
+                edges.append(BaseEdge(from_address=address, to_address=input_utxo_hash, type="OWNS"))
+
+            if output_utxo_hash and not any(node.id == output_utxo_hash for node in nodes):
+                nodes.append(UTXONode(
+                    id=output_utxo_hash,
+                    type="UTXO",
+                    value=int(record["output_value"] or 0),
+                    asset_policy=serialize_value(record["output_asset_policy"]),
+                    asset_name=serialize_value(record["output_asset_name"]),
+                    asset_quantity=int(record["output_asset_quantity"] or 0)
+                ))
+                if other_address:
+                    edges.append(BaseEdge(from_address=other_address, to_address=output_utxo_hash, type="OWNS"))
 
             if not any(node.id == tx_hash for node in nodes):
                 nodes.append(TransactionNode(
@@ -61,49 +80,28 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
                     type="Transaction",
                     tx_hash=tx_hash,
                     timestamp=record["timestamp"].isoformat() if record["timestamp"] else None,
-                    value=int(record["output_value"] or 0),  # Use 0 if None
-                    fee=float(record["fee"] or 0),  # Use 0 if None
-                    asset_policy=record["asset_policy"],
-                    asset_name=record["asset_name"],
-                    asset_quantity=int(record["asset_quantity"] or 0)  # Use 0 if None
+                    fee=float(record["fee"] or 0),
+                    value=int(record["output_value"] or 0)
                 ))
 
-            if to_address and not any(node.id == to_address for node in nodes):
-                nodes.append(AddressNode(id=to_address, type="Address", label=to_address))
-
-            if record["block_hash"] and not any(node.id == record["block_hash"] for node in nodes):
-                nodes.append(BlockNode(
-                    id=record["block_hash"],
-                    type="Block",
-                    hash=record["block_hash"],
-                    block_no=record["block_no"],
-                    epoch_no=record["epoch_no"],
-                    slot_no=record["slot_no"],
-                    time=record["block_time"].isoformat() if record["block_time"] else None,
-                    tx_count=record["tx_count"],
-                    size=record["block_size"]
-                ))
-
-            if from_address and tx_hash:
-                edges.append(BaseEdge(from_address=from_address, to_address=tx_hash, type="INPUT"))
-            if tx_hash and to_address:
-                edges.append(BaseEdge(from_address=tx_hash, to_address=to_address, type="OUTPUT"))
-            if tx_hash and record["block_hash"]:
-                edges.append(BaseEdge(from_address=tx_hash, to_address=record["block_hash"], type="CONTAINED_BY"))
+            # Add edges
+            if input_utxo_hash:
+                edges.append(BaseEdge(from_address=input_utxo_hash, to_address=tx_hash, type="INPUT"))
+            if output_utxo_hash:
+                edges.append(BaseEdge(from_address=tx_hash, to_address=output_utxo_hash, type="OUTPUT"))
 
     stake_query = """
     MATCH (a:Address {address: $address})-[:STAKE]->(s:StakeAddress)
-    RETURN a.address AS address, s.address AS stake_address
+    RETURN s.address AS stake_address
     """
 
     with driver.session() as session:
         result = session.run(stake_query, params)
         for record in result:
-            if not any(node.id == record["stake_address"] for node in nodes):
-                nodes.append(
-                    StakeAddressNode(id=record["stake_address"], type="StakeAddress", label=record["stake_address"]))
-
-            edges.append(BaseEdge(from_address=record["address"], to_address=record["stake_address"], type="STAKE"))
+            stake_address = serialize_value(record["stake_address"])
+            if stake_address and not any(node.id == stake_address for node in nodes):
+                nodes.append(StakeAddressNode(id=stake_address, type="StakeAddress", label=stake_address))
+                edges.append(BaseEdge(from_address=address, to_address=stake_address, type="STAKE"))
 
     return GraphData(nodes=nodes, edges=edges)
 

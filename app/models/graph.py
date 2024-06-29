@@ -15,12 +15,11 @@ class BaseEdge(BaseModel):
     type: str
 
 
-class BaseGraphData(BaseModel):
+class GraphData(BaseModel):
     nodes: List[BaseNode]
     edges: List[BaseEdge]
 
 
-# Specific Node Types
 class AddressNode(BaseNode):
     label: str
 
@@ -51,6 +50,15 @@ class BlockNode(BaseNode):
     size: int
 
 
+class UTXONode(BaseNode):
+    id: str
+    type: str = "UTXO"
+    value: int
+    asset_policy: Optional[str] = None
+    asset_name: Optional[str] = None
+    asset_quantity: Optional[int] = None
+
+
 class EpochNode(BaseNode):
     no: int
     start_time: str
@@ -63,12 +71,6 @@ class EpochNode(BaseNode):
 Node = Union[AddressNode, TransactionNode, StakeAddressNode, BlockNode, EpochNode]
 
 
-# GraphData with specific Node type
-class GraphData(BaseGraphData):
-    nodes: List[Node]
-
-
-# Detail Models
 class AddressDetails(BaseModel):
     address: str
     utxos: List[Any]

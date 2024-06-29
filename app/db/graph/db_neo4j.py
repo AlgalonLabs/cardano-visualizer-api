@@ -1,7 +1,7 @@
+import binascii
 import logging
 from datetime import datetime
 
-import neo4j
 from neo4j.time import DateTime
 
 from app.db.connections import connect_neo4j
@@ -19,12 +19,12 @@ def serialize_node(node, exclude_keys=None):
     if exclude_keys is None:
         exclude_keys = []
 
-    if hasattr(node, 'items'):  # Check if it's a node-like object
+    if hasattr(node, 'items'):
         return {key: serialize_value(value) for key, value in node.items() if key not in exclude_keys}
     elif isinstance(node, dict):
         return {key: serialize_value(value) for key, value in node.items() if key not in exclude_keys}
     else:
-        return str(node)  # Convert to string if it's neither a Node-like object nor a dict
+        return str(node)
 
 
 def serialize_value(value):
@@ -38,9 +38,9 @@ def serialize_value(value):
         return serialize_node(value)
     elif isinstance(value, bytes):
         try:
-            return value.decode('utf-8')
+            return binascii.hexlify(value).decode('ascii')
         except UnicodeDecodeError:
-            return value.decode('latin-1', errors='replace')
+            return binascii.hexlify(value).decode('unicode_escape')
     else:
         return value
 

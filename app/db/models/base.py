@@ -126,7 +126,7 @@ class Transaction(Base):
     __tablename__ = 'tx'
 
     id = Column(BigInteger, primary_key=True)
-    hash = Column(LargeBinary, unique=True, nullable=False)
+    hash = Column(LargeBinary, unique=True, nullable=False, )
     block_id = Column(BigInteger, ForeignKey('block.id'), nullable=False)
     block_index = Column(Integer, nullable=False)
     out_sum = Column(Numeric(20, 0), nullable=False)

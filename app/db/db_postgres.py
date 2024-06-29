@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.operators import and_
 
@@ -57,9 +57,9 @@ def fetch_input_utxos(session: Session, start: str, end: str) -> List[InputUTXO]
     stmt = (
         select(
             TransactionIn.tx_in_id.label('tx_id'),
-            ConsumingTransaction.hash.label('consuming_tx_hash'),
-            CreatingTransaction.hash.label('creating_tx_hash'),
-            CreatingBlock.hash.label('block_hash'),
+            func.encode(ConsumingTransaction.hash, 'hex').label('consuming_tx_hash'),
+            func.encode(CreatingTransaction.hash, 'hex').label('creating_tx_hash'),
+            func.encode(CreatingBlock.hash, 'hex').label('block_hash'),
             CreatingTransaction.block_index,
             TransactionOut.id.label('tx_out_id'),
             TransactionOut.index.label('tx_out_index'),
@@ -71,12 +71,12 @@ def fetch_input_utxos(session: Session, start: str, end: str) -> List[InputUTXO]
             StakeAddress.view.label('stake_address')
         )
         .select_from(TransactionIn)
-        .join(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id)  # Consuming transaction
-        .join(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id)  # Consuming block
+        .join(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id)
+        .join(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id)
         .join(TransactionOut,
               (TransactionIn.tx_out_id == TransactionOut.tx_id) & (TransactionIn.tx_out_index == TransactionOut.index))
-        .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)  # Creating transaction
-        .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)  # Creating block
+        .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)
+        .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)
         .outerjoin(StakeAddress, StakeAddress.id == TransactionOut.stake_address_id)
         .where(ConsumingBlock.time >= start, ConsumingBlock.time <= end)
     )
@@ -134,9 +134,9 @@ def fetch_output_utxos(session: Session, start: str, end: str) -> List[OutputUTX
     stmt = (
         select(
             CreatingTransaction.id.label('tx_id'),
-            CreatingTransaction.hash.label('creating_tx_hash'),
-            ConsumingTransaction.hash.label('consuming_tx_hash'),
-            CreatingBlock.hash.label('block_hash'),
+            func.encode(CreatingTransaction.hash, 'hex').label('creating_tx_hash'),
+            func.encode(ConsumingTransaction.hash, 'hex').label('consuming_tx_hash'),
+            func.encode(CreatingBlock.hash, 'hex').label('block_hash'),
             CreatingTransaction.block_index,
             CreatingTransaction.fee,
             TransactionOut.index.label('tx_out_index'),
@@ -148,13 +148,13 @@ def fetch_output_utxos(session: Session, start: str, end: str) -> List[OutputUTX
             StakeAddress.view.label('stake_address')
         )
         .select_from(TransactionOut)
-        .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)  # Creating transaction
-        .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)  # Creating block
+        .join(CreatingTransaction, CreatingTransaction.id == TransactionOut.tx_id)
+        .join(CreatingBlock, CreatingBlock.id == CreatingTransaction.block_id)
         .outerjoin(TransactionIn,
                    (TransactionIn.tx_out_id == TransactionOut.tx_id) &
-                   (TransactionIn.tx_out_index == TransactionOut.index))  # Consuming UTXO
-        .outerjoin(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id)  # Consuming transaction
-        .outerjoin(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id)  # Consuming block
+                   (TransactionIn.tx_out_index == TransactionOut.index))
+        .outerjoin(ConsumingTransaction, ConsumingTransaction.id == TransactionIn.tx_in_id)
+        .outerjoin(ConsumingBlock, ConsumingBlock.id == ConsumingTransaction.block_id)
         .outerjoin(StakeAddress, StakeAddress.id == TransactionOut.stake_address_id)
         .where(CreatingBlock.time >= start, CreatingBlock.time <= end)
     )

@@ -84,4 +84,3 @@ def get_asset_details(driver: Driver, asset_id: str) -> AssetDetails:
                 "transactions": record["transactions"]
             }
         return {}
-

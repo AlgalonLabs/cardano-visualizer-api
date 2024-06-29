@@ -199,4 +199,3 @@ def insert_utxos(driver: Driver, transactions: Dict[str, Transaction], batch_siz
             logging.info(f"Processing batch {i + 1}/{total_batches}")
             process_batch(batch)
             logging.info(f"Processed batch of size {len(batch)}")
-

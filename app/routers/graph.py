@@ -3,13 +3,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from neo4j import Driver
 
-from app.db.graph.address import get_graph_by_address, get_address_details
-from app.db.graph.asset import get_graph_by_asset, get_asset_details
-from app.db.graph.block import get_graph_by_block_hash, get_block_details, get_blocks
-from app.db.graph.epoch import get_epoch_details, get_epochs
-from app.db.graph.transaction import get_transaction_details
-from app.models.graph import GraphData, AddressDetails, TransactionDetails, AssetDetails, BlockDetails, EpochDetails, \
-    Blocks, Epochs
+from app.db.graph.address import get_graph_by_address
+from app.db.graph.asset import get_graph_by_asset
+from app.db.graph.block import get_graph_by_block_hash, get_blocks
+from app.db.graph.epoch import get_epochs
+from app.models.graph import GraphData, Blocks, Epochs
 from app.routers.dependencies import get_neo4j_driver
 
 router = APIRouter()
@@ -30,32 +28,6 @@ def api_get_graph_by_address(address: str, start_time: Optional[str] = None, end
 @router.get("/graph/blocks/{block_hash}", response_model=GraphData)
 def api_get_graph_by_block_hash(block_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> GraphData:
     return get_graph_by_block_hash(driver, block_hash, 1)
-
-
-@router.get("/addresses/{address_hash}", response_model=AddressDetails)
-def api_get_address_details(address_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> AddressDetails:
-    return get_address_details(driver, address_hash)
-
-
-@router.get("/transaction/{transaction_hash}", response_model=TransactionDetails)
-def api_get_transaction_details(transaction_hash: str,
-                                driver: Driver = Depends(get_neo4j_driver)) -> TransactionDetails:
-    return get_transaction_details(driver, transaction_hash)
-
-
-@router.get("/asset/{asset_id}", response_model=AssetDetails)
-def api_get_asset_details(asset_id: str, driver: Driver = Depends(get_neo4j_driver)) -> AssetDetails:
-    return get_asset_details(driver, asset_id)
-
-
-@router.get("/blocks/{block_hash}", response_model=BlockDetails)
-def api_get_block_details(block_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> BlockDetails:
-    return get_block_details(driver, block_hash)
-
-
-@router.get("/epochs/{epoch_no}", response_model=EpochDetails)
-def api_get_epoch_details(epoch_no: int, driver: Driver = Depends(get_neo4j_driver)) -> EpochDetails:
-    return get_epoch_details(driver, epoch_no)
 
 
 @router.get("/blocks", response_model=Blocks)
