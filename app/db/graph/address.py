@@ -4,7 +4,8 @@ from neo4j import Driver
 from pydantic import ValidationError
 
 from app.db.graph.db_neo4j import serialize_node, serialize_value
-from app.models.graph import BaseEdge, AddressNode, TransactionNode, AddressDetails, BaseNode, UTXONode, \
+from app.models.details import AddressDetails
+from app.models.graph import BaseEdge, AddressNode, TransactionNode, BaseNode, UTXONode, \
     StakeAddressNode, GraphData
 
 
@@ -106,24 +107,96 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
     return GraphData(nodes=nodes, edges=edges)
 
 
+# def get_address_details(driver: Driver, address_hash: str) -> AddressDetails:
+#     query = """
+#     MATCH (a:Address {address: $address_hash})-[:OWNS]->(u:UTXO)
+#     OPTIONAL MATCH (u)-[:INPUT]->(t:Transaction)
+#     RETURN a.address AS address, collect(distinct u) AS utxos, collect(distinct t) AS transactions
+#     """
+#     with driver.session() as session:
+#         result = session.run(query, {"address_hash": address_hash})
+#         record = result.single()
+#         if record:
+#             try:
+#                 return AddressDetails(
+#                     address=serialize_value(record["address"]),
+#                     utxos=[serialize_node(utxo) for utxo in record["utxos"]],
+#                     transactions=[serialize_node(transaction) for transaction in record["transactions"]]
+#                 )
+#             except ValidationError as e:
+#                 print(f"Validation error: {e}")
+#                 # You might want to log this error or handle it in some way
+#                 return AddressDetails(address=address_hash, utxos=[], transactions=[])
+#         return AddressDetails(address=address_hash, utxos=[], transactions=[])
 def get_address_details(driver: Driver, address_hash: str) -> AddressDetails:
     query = """
-    MATCH (a:Address {address: $address_hash})-[:OWNS]->(u:UTXO)
+    MATCH (a:Address {address: $address_hash})
+    OPTIONAL MATCH (a)-[:OWNS]->(u:UTXO)
+    OPTIONAL MATCH (a)-[:STAKE]->(s:StakeAddress)
     OPTIONAL MATCH (u)-[:INPUT]->(t:Transaction)
-    RETURN a.address AS address, collect(distinct u) AS utxos, collect(distinct t) AS transactions
+    WITH a, s, collect(distinct u) AS utxos, collect(distinct t) AS transactions
+    OPTIONAL MATCH (a)-[:OWNS]->(currentUTXO:UTXO)
+    WHERE NOT (currentUTXO)-[:INPUT]->(:Transaction)
+    WITH a, s, utxos, transactions, sum(currentUTXO.value) AS current_balance
+    OPTIONAL MATCH (a)-[:OWNS]->(histUTXO:UTXO)
+    WHERE histUTXO.timestamp >= datetime() - duration('P30D')
+    WITH a, s, utxos, transactions, current_balance, histUTXO
+    ORDER BY histUTXO.timestamp
+    WITH a, s, utxos, transactions, current_balance, 
+         collect(histUTXO.value) AS historical_balances,
+         collect(histUTXO.timestamp) AS balance_timestamps
+    RETURN 
+        a.address AS address,
+        s.address AS stake_address,
+        current_balance AS balance,
+        size(transactions) AS transaction_count,
+        utxos,
+        transactions,
+        historical_balances,
+        balance_timestamps,
+        CASE WHEN s IS NOT NULL THEN true ELSE false END AS is_staked,
+        s.pool_id AS pool_id,
+        s.rewards AS stake_rewards
     """
+
     with driver.session() as session:
         result = session.run(query, {"address_hash": address_hash})
         record = result.single()
         if record:
             try:
+                # Calculate highest and lowest balance
+                historical_balances = record["historical_balances"]
+                highest_balance = max(historical_balances) if historical_balances else record["balance"]
+                lowest_balance = min(historical_balances) if historical_balances else record["balance"]
+
+                # Create balance history for chart
+                balance_history = [
+                    {"time": timestamp.strftime("%Y-%m-%d %H:%M:%S"), "balance": balance}
+                    for timestamp, balance in zip(record["balance_timestamps"], historical_balances)
+                ]
+
                 return AddressDetails(
-                    address=serialize_value(record["address"]),
+                    id=serialize_value(record["address"]),
+                    transactions=record["transaction_count"],
+                    balance=str(record["balance"]),
+                    value=str(record["balance"]),  # You might want to fetch ADA price and calculate USD value
+                    stake_address=serialize_value(record["stake_address"]),
+                    total_stake=str(record["balance"]) if record["is_staked"] else "0",
+                    pool_name=record["pool_id"],  # You might want to fetch pool name from pool_id
+                    reward_balance=str(record["stake_rewards"]),
+                    highest_balance=str(highest_balance),
+                    lowest_balance=str(lowest_balance),
+                    balance_history=balance_history,
                     utxos=[serialize_node(utxo) for utxo in record["utxos"]],
-                    transactions=[serialize_node(transaction) for transaction in record["transactions"]]
+                    recent_transactions=[serialize_node(tx) for tx in record["transactions"][:10]]
+                    # Last 10 transactions
                 )
             except ValidationError as e:
                 print(f"Validation error: {e}")
                 # You might want to log this error or handle it in some way
-                return AddressDetails(address=address_hash, utxos=[], transactions=[])
-        return AddressDetails(address=address_hash, utxos=[], transactions=[])
+                return AddressDetails(id=address_hash, transactions=0, balance="0", value="0", stake_address=None,
+                                      total_stake="0", pool_name=None, reward_balance="0", highest_balance="0",
+                                      lowest_balance="0", balance_history=[], utxos=[], recent_transactions=[])
+        return AddressDetails(id=address_hash, transactions=0, balance="0", value="0", stake_address=None,
+                              total_stake="0", pool_name=None, reward_balance="0", highest_balance="0",
+                              lowest_balance="0", balance_history=[], utxos=[], recent_transactions=[])

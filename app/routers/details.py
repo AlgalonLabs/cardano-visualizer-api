@@ -6,7 +6,8 @@ from app.db.graph.asset import get_asset_details
 from app.db.graph.block import get_block_details
 from app.db.graph.epoch import get_epoch_details
 from app.db.graph.transaction import get_transaction_details
-from app.models.graph import AddressDetails, TransactionDetails, AssetDetails, BlockDetails, EpochDetails
+from app.models.details import AddressDetails
+from app.models.graph import TransactionDetails, AssetDetails, BlockDetails, EpochDetails
 from app.routers.dependencies import get_neo4j_driver
 
 router = APIRouter()
