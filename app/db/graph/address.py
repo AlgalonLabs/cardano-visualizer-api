@@ -107,27 +107,6 @@ def get_graph_by_address(driver: Driver, address: str, start_time: Optional[str]
     return GraphData(nodes=nodes, edges=edges)
 
 
-# def get_address_details(driver: Driver, address_hash: str) -> AddressDetails:
-#     query = """
-#     MATCH (a:Address {address: $address_hash})-[:OWNS]->(u:UTXO)
-#     OPTIONAL MATCH (u)-[:INPUT]->(t:Transaction)
-#     RETURN a.address AS address, collect(distinct u) AS utxos, collect(distinct t) AS transactions
-#     """
-#     with driver.session() as session:
-#         result = session.run(query, {"address_hash": address_hash})
-#         record = result.single()
-#         if record:
-#             try:
-#                 return AddressDetails(
-#                     address=serialize_value(record["address"]),
-#                     utxos=[serialize_node(utxo) for utxo in record["utxos"]],
-#                     transactions=[serialize_node(transaction) for transaction in record["transactions"]]
-#                 )
-#             except ValidationError as e:
-#                 print(f"Validation error: {e}")
-#                 # You might want to log this error or handle it in some way
-#                 return AddressDetails(address=address_hash, utxos=[], transactions=[])
-#         return AddressDetails(address=address_hash, utxos=[], transactions=[])
 def get_address_details(driver: Driver, address_hash: str) -> AddressDetails:
     query = """
     MATCH (a:Address {address: $address_hash})
