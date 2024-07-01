@@ -1,5 +1,6 @@
 from neo4j import Driver
 
+from app.db.graph.db_neo4j import serialize_node
 from app.models.details import TransactionDetails
 
 
@@ -22,30 +23,30 @@ def get_transaction_details(driver: Driver, transaction_hash: str) -> Transactio
         result = session.run(query, {"transaction_hash": transaction_hash})
         record = result.single()
         if record:
-            transaction = record["t"]
-            utxo_inputs = record["inputs"]
-            utxo_outputs = record["outputs"]
-            block = record["b"]
+            transaction = serialize_node(record["t"])
+            inputs = [serialize_node(utxo_input) for utxo_input in record["inputs"]]
+            outputs = [serialize_node(output) for output in record["outputs"]]
+            block = serialize_node(record["b"]) if record["b"] else None
 
-            return TransactionDetails(
-                hash=transaction["tx_hash"],
-                created_at=transaction["timestamp"],
-                total_output=sum(output["utxo"]["value"] for output in utxo_outputs),
-                fee=transaction["fee"],
-                block_number=block["block_no"] if block else None,
-                slot=block["slot_no"] if block else None,
-                absolute_slot=block["absolute_slot"] if block else None,
-                inputs=[{
+            return {
+                "hash": transaction["tx_hash"],
+                "created_at": transaction["timestamp"],
+                "total_output": sum(output["utxo"]["value"] for output in outputs),
+                "fee": transaction["fee"],
+                "block_number": block.get("block_no") if block else None,
+                "slot": block.get("slot_no") if block else None,
+                "absolute_slot": block.get("absolute_slot") if block else None,
+                "inputs": [{
                     "address": utxo_input["address"]["address"],
                     "stake_address": utxo_input["stake"]["address"] if utxo_input["stake"] else None,
                     "amount": utxo_input["utxo"]["value"],
                     "utxo_hash": utxo_input["utxo"]["utxo_hash"],
                     "utxo_index": utxo_input["utxo"]["index"]
-                } for utxo_input in utxo_inputs],
-                outputs=[{
-                    "address": utxo_output["address"]["address"],
-                    "stake_address": utxo_output["stake"]["address"] if utxo_output["stake"] else None,
-                    "amount": utxo_output["utxo"]["value"]
-                } for utxo_output in utxo_outputs]
-            )
+                } for utxo_input in inputs],
+                "outputs": [{
+                    "address": output["address"]["address"],
+                    "stake_address": output["stake"]["address"] if output["stake"] else None,
+                    "amount": output["utxo"]["value"]
+                } for output in outputs]
+            }
         return None

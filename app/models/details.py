@@ -35,7 +35,7 @@ class UTXOInfo(BaseModel):
 
 class TransactionDetails(BaseModel):
     hash: str
-    created_at: datetime
+    created_at: str
     total_output: float
     fee: float
     block_number: Optional[int]
