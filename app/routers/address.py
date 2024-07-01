@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from neo4j import Driver
 
 from app.db.graph.address import get_address_details
+from app.db.graph.db_neo4j import serialize_value
 from app.models.details import AddressDetails
 from app.routers.dependencies import get_neo4j_driver
 
@@ -17,7 +18,7 @@ class TimePeriod(str, Enum):
     ONE_YEAR = "ONE_YEAR"
 
 
-@router.get("/api/v1/addresses/analytics/{address}/{time_period}")
+@router.get("/addresses/analytics/{address}/{time_period}")
 async def get_address_analytics(
         address: str,
         time_period: TimePeriod,
@@ -44,7 +45,7 @@ async def get_address_analytics(
     return {"analytics": data}
 
 
-@router.get("/api/v1/addresses/{address}/txs")
+@router.get("/addresses/{address}/txs")
 async def get_address_transactions(
         address: str,
         page: int = Query(0, ge=0),
@@ -69,12 +70,12 @@ async def get_address_transactions(
             "skip": page * size,
             "limit": size
         })
-        transactions = [dict(record) for record in result]
+        transactions = [serialize_value(record) for record in result]
 
     return {"transactions": transactions}
 
 
-@router.get("/api/v1/addresses/{address}/tokens")
+@router.get("/addresses/{address}/tokens")
 async def get_address_tokens(
         address: str,
         display_name: str = Query(None),
@@ -101,11 +102,11 @@ async def get_address_tokens(
             "skip": page * size,
             "limit": size
         })
-        tokens = [dict(record) for record in result]
+        tokens = [serialize_value(record) for record in result]
 
     return {"tokens": tokens}
 
 
-@router.get("/addresses/{address_hash}", response_model=AddressDetails)
-def api_get_address_details(address_hash: str, driver: Driver = Depends(get_neo4j_driver)) -> AddressDetails:
-    return get_address_details(driver, address_hash)
+@router.get("/addresses/{address}", response_model=AddressDetails)
+def api_get_address_details(address: str, driver: Driver = Depends(get_neo4j_driver)) -> AddressDetails:
+    return get_address_details(driver, address)

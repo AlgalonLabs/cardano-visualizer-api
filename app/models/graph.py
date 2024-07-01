@@ -71,12 +71,6 @@ class EpochNode(BaseNode):
 Node = Union[AddressNode, TransactionNode, StakeAddressNode, BlockNode, EpochNode]
 
 
-class TransactionDetails(BaseModel):
-    transaction: Any
-    relationships: List[Any]
-    nodes: List[Any]
-
-
 class AssetDetails(BaseModel):
     asset: Any
     transactions: List[Any]

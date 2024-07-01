@@ -4,17 +4,10 @@ from neo4j import Driver
 from app.db.graph.asset import get_asset_details
 from app.db.graph.block import get_block_details
 from app.db.graph.epoch import get_epoch_details
-from app.db.graph.transaction import get_transaction_details
-from app.models.graph import TransactionDetails, AssetDetails, BlockDetails, EpochDetails
+from app.models.graph import AssetDetails, BlockDetails, EpochDetails
 from app.routers.dependencies import get_neo4j_driver
 
 router = APIRouter()
-
-
-@router.get("/transaction/{transaction_hash}", response_model=TransactionDetails)
-def api_get_transaction_details(transaction_hash: str,
-                                driver: Driver = Depends(get_neo4j_driver)) -> TransactionDetails:
-    return get_transaction_details(driver, transaction_hash)
 
 
 @router.get("/asset/{asset_id}", response_model=AssetDetails)
