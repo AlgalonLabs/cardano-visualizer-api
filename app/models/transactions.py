@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
+from pydantic import BaseModel
+
 
 @dataclass
 class InputUTXO:
@@ -65,3 +67,20 @@ class ProcessedTransaction:
     asset_policy: Optional[str]
     asset_name: Optional[str]
     asset_quantity: Optional[int]
+
+
+class TransactionResponse(BaseModel):
+    tx_hash: str
+    block_hash: str
+    epoch_no: int
+    slot_no: int
+    absolute_slot: int
+    fees: float
+    output_ada: float
+    input_addresses: List[str]
+    output_addresses: List[str]
+
+
+class TransactionsResponse(BaseModel):
+    transactions: List[TransactionResponse]
+    total_count: int
