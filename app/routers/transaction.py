@@ -84,7 +84,7 @@ async def get_transactions(
     RETURN 
         t.tx_hash AS tx_hash,
         t.timestamp AS timestamp,
-        b.hash AS block_hash,
+        b.block_no AS block_no,
         e.no AS epoch_no,
         b.slot_no AS slot_no,
         b.epoch_slot_no AS absolute_slot,
@@ -113,7 +113,7 @@ async def get_transactions(
             transactions.append(TransactionResponse(
                 tx_hash=record["tx_hash"],
                 timestamp=record["timestamp"],
-                block_hash=record["block_hash"],
+                block_no=str(record["block_no"]),
                 epoch_no=record["epoch_no"],
                 slot_no=record["slot_no"],
                 absolute_slot=record["absolute_slot"],

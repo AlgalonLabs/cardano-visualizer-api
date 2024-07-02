@@ -71,7 +71,7 @@ class ProcessedTransaction:
 
 class TransactionResponse(BaseModel):
     tx_hash: str
-    block_hash: str
+    block_no: str
     epoch_no: int
     slot_no: int
     absolute_slot: int
