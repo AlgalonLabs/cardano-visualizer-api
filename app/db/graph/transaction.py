@@ -7,13 +7,13 @@ from app.models.details import TransactionDetails
 def get_transaction_details(driver: Driver, transaction_hash: str) -> TransactionDetails:
     query = """
     MATCH (t:Transaction {tx_hash: $transaction_hash})
-    OPTIONAL MATCH (input:UTXO)-[:INPUT]->(t)
-    OPTIONAL MATCH (t)-[:OUTPUT]->(output:UTXO)
-    OPTIONAL MATCH (input)<-[:OWNS]-(inputAddress:Address)
-    OPTIONAL MATCH (output)<-[:OWNS]-(outputAddress:Address)
+    MATCH (input:UTXO)-[:INPUT]->(t)
+    MATCH (t)-[:OUTPUT]->(output:UTXO)
+    MATCH (input)<-[:OWNS]-(inputAddress:Address)
+    MATCH (output)<-[:OWNS]-(outputAddress:Address)
+    MATCH (t)-[:CONTAINED_BY]->(b:Block)
     OPTIONAL MATCH (inputAddress)-[:STAKE]->(inputStake:StakeAddress)
     OPTIONAL MATCH (outputAddress)-[:STAKE]->(outputStake:StakeAddress)
-    OPTIONAL MATCH (t)-[:CONTAINED_BY]->(b:Block)
     RETURN t, 
            collect(DISTINCT {utxo: input, address: inputAddress, stake: inputStake}) AS inputs,
            collect(DISTINCT {utxo: output, address: outputAddress, stake: outputStake}) AS outputs,
@@ -33,9 +33,9 @@ def get_transaction_details(driver: Driver, transaction_hash: str) -> Transactio
                 "created_at": transaction["timestamp"],
                 "total_output": sum(output["utxo"]["value"] for output in outputs),
                 "fee": transaction["fee"],
-                "block_number": block.get("block_no") if block else None,
-                "slot": block.get("slot_no") if block else None,
-                "absolute_slot": block.get("absolute_slot") if block else None,
+                "block_no": block.get("block_no") if block else None,
+                "slot_no": block.get("slot_no") if block else None,
+                "absolute_slot_no": block.get("absolute_slot") if block else None,
                 "inputs": [{
                     "address": utxo_input["address"]["address"],
                     "stake_address": utxo_input["stake"]["address"] if utxo_input["stake"] else None,

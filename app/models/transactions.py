@@ -74,11 +74,13 @@ class TransactionResponse(BaseModel):
     block_no: str
     epoch_no: int
     slot_no: int
-    absolute_slot: int
+    timestamp: str
+    absolute_slot_no: int
     fees: float
-    output_ada: float
+    total_output: float
     input_addresses: List[str]
     output_addresses: List[str]
+    status: str
 
 
 class TransactionsResponse(BaseModel):

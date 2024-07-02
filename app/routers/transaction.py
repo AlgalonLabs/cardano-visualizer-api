@@ -87,9 +87,9 @@ async def get_transactions(
         b.block_no AS block_no,
         e.no AS epoch_no,
         b.slot_no AS slot_no,
-        b.epoch_slot_no AS absolute_slot,
+        b.epoch_slot_no AS absolute_slot_no,
         t.fee AS fees,
-        reduce(s = 0, output IN outputs | s + output.utxo.value) AS output_ada,
+        reduce(s = 0, output IN outputs | s + output.utxo.value) AS total_output,
         [input IN inputs | input.address] AS input_addresses,
         [output IN outputs | output.address] AS output_addresses
     """
@@ -120,7 +120,8 @@ async def get_transactions(
                 fees=record["fees"],
                 output_ada=record["output_ada"],
                 input_addresses=record["input_addresses"],
-                output_addresses=record["output_addresses"]
+                output_addresses=record["output_addresses"],
+                status="SUCCESS",
             ))
 
         total_count_result = session.run(query_count)

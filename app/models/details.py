@@ -43,9 +43,9 @@ class TransactionDetails(BaseModel):
     created_at: str
     total_output: float
     fee: float
-    block_number: Optional[int] = None
-    slot: Optional[int] = None
-    absolute_slot: Optional[int] = None
+    block_no: Optional[int] = None
+    slot_no: Optional[int] = None
+    absolute_slot_no: Optional[int] = None
     inputs: List[InputUTXOInfo]
     outputs: List[OutputUTXOInfo]
 
