@@ -3,7 +3,6 @@ from typing import List, Any, Optional, Union
 from pydantic import BaseModel, Field
 
 
-# Base Models
 class BaseNode(BaseModel):
     id: str
     type: str
@@ -67,7 +66,6 @@ class EpochNode(BaseNode):
     end_time: str
 
 
-# Union type for all possible node types
 Node = Union[AddressNode, TransactionNode, StakeAddressNode, BlockNode, EpochNode]
 
 

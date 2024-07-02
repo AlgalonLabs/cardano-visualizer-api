@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional, List
 
 from pydantic import BaseModel
@@ -25,12 +24,18 @@ class AddressDetails(BaseModel):
     recent_transactions: List[dict]
 
 
-class UTXOInfo(BaseModel):
+class InputUTXOInfo(BaseModel):
     address: str
-    stake_address: Optional[str]
+    stake_address: Optional[str] = None
     amount: float
     utxo_hash: str
     utxo_index: int
+
+
+class OutputUTXOInfo(BaseModel):
+    address: str
+    stake_address: Optional[str] = None
+    amount: float
 
 
 class TransactionDetails(BaseModel):
@@ -38,11 +43,11 @@ class TransactionDetails(BaseModel):
     created_at: str
     total_output: float
     fee: float
-    block_number: Optional[int]
-    slot: Optional[int]
-    absolute_slot: Optional[int]
-    inputs: List[UTXOInfo]
-    outputs: List[UTXOInfo]
+    block_number: Optional[int] = None
+    slot: Optional[int] = None
+    absolute_slot: Optional[int] = None
+    inputs: List[InputUTXOInfo]
+    outputs: List[OutputUTXOInfo]
 
     class Config:
         from_attributes = True
