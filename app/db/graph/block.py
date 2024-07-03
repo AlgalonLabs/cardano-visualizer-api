@@ -151,8 +151,8 @@ def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> 
 def get_block_details(driver: Driver, block_hash: str) -> Dict[str, Any]:
     query = """
     MATCH (b:Block {hash: $block_hash})
-    OPTIONAL MATCH (b)-[:CONTAINS]->(t:Transaction)
-    OPTIONAL MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
+    MATCH (b)-[:CONTAINS]->(t:Transaction)
+    MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
     RETURN b, collect(t) AS transactions, e
     """
     with driver.session() as session:

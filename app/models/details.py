@@ -38,14 +38,22 @@ class OutputUTXOInfo(BaseModel):
     amount: float
 
 
+class TransactionSummary(BaseModel):
+    address: str
+    net_amount: float
+    tokens_sent: int
+    tokens_received: int
+
+
 class TransactionDetails(BaseModel):
     hash: str
     created_at: str
     total_output: float
-    fee: float
+    fees: float
     block_no: Optional[int] = None
     slot_no: Optional[int] = None
     absolute_slot_no: Optional[int] = None
+    summary: List[TransactionSummary]
     inputs: List[InputUTXOInfo]
     outputs: List[OutputUTXOInfo]
 
