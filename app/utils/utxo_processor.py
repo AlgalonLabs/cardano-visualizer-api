@@ -30,6 +30,8 @@ def group_transactions(inputs: List[InputUTXO], outputs: List[OutputUTXO]) -> Di
                                                 block_hash=utxo.block_hash)
 
         transactions[tx_hash].fee = utxo.fee
+        transactions[tx_hash].block_index = utxo.block_index
+        transactions[tx_hash].block_hash = utxo.block_hash
         transactions[tx_hash].outputs.append(utxo)
 
     logging.info(f"Grouped {len(transactions)} unique transactions")

@@ -18,6 +18,58 @@ class TimePeriod(str, Enum):
     ONE_YEAR = "ONE_YEAR"
 
 
+@router.get("/addresses")
+async def get_addresses(
+        page: int = Query(0, ge=0),
+        size: int = Query(50, ge=1, le=100),
+        sort: str = Query("balance,desc"),
+        driver: Driver = Depends(get_neo4j_driver)
+) -> Dict[str, any]:
+    # Parse sort parameter
+    sort_field, sort_order = sort.split(',')
+    if sort_field not in ['address', 'balance', 'transactionCount']:
+        sort_field = 'balance'
+    if sort_order not in ['asc', 'desc']:
+        sort_order = 'desc'
+
+    query = """
+    MATCH (a:Address)
+    WITH a, 
+         sum([(a)-[:OWNS]->(u:UTXO) WHERE NOT (u)-[:INPUT]->() | u.value][0]) AS balance,
+         size((a)-[:OWNS]->(:UTXO)-[:INPUT|OUTPUT]-(:Transaction)) AS transactionCount
+    ORDER BY {sort_field} {sort_order}
+    SKIP $skip
+    LIMIT $limit
+    RETURN a.address AS address, balance, transactionCount
+    """
+
+    count_query = """
+    MATCH (a:Address)
+    RETURN count(a) AS total
+    """
+
+    with driver.session() as session:
+        # Fetch addresses
+        result = session.run(query, {
+            "skip": page * size,
+            "limit": size,
+            "sort_field": sort_field,
+            "sort_order": sort_order.upper()
+        })
+        addresses = [serialize_value(record) for record in result]
+
+        # Fetch total count
+        count_result = session.run(count_query)
+        total_count = count_result.single()["total"]
+
+    return {
+        "addresses": addresses,
+        "page": page,
+        "pageSize": size,
+        "totalCount": total_count
+    }
+
+
 @router.get("/addresses/analytics/{address}/{time_period}")
 async def get_address_analytics(
         address: str,

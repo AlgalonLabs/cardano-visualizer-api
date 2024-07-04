@@ -42,56 +42,33 @@ def insert_blocks(driver: Driver, blocks: List[Block]):
 
         logging.info(f"Inserting {len(blocks)} blocks into graph")
 
-        result = session.run(
-            """
-            UNWIND $blocks_data AS block
-            MERGE (b:Block {hash: block.hash})
-            ON CREATE SET b.id = block.block_id,
-                          b.epoch_no = block.epoch_no,
-                          b.slot_no = block.slot_no,
-                          b.epoch_slot_no = block.epoch_slot_no,
-                          b.block_no = block.block_no,
-                          b.previous_id = block.previous_id,
-                          b.slot_leader_id = block.slot_leader_id,
-                          b.size = block.size,
-                          b.time = datetime(block.time),
-                          b.tx_count = block.tx_count,
-                          b.proto_major = block.proto_major,
-                          b.proto_minor = block.proto_minor,
-                          b.vrf_key = block.vrf_key,
-                          b.op_cert = block.op_cert,
-                          b.op_cert_counter = block.op_cert_counter
-            ON MATCH SET b.id = block.block_id,
-                         b.epoch_no = block.epoch_no,
-                         b.slot_no = block.slot_no,
-                         b.epoch_slot_no = block.epoch_slot_no,
-                         b.block_no = block.block_no,
-                         b.previous_id = block.previous_id,
-                         b.slot_leader_id = block.slot_leader_id,
-                         b.size = block.size,
-                         b.time = datetime(block.time),
-                         b.tx_count = block.tx_count,
-                         b.proto_major = block.proto_major,
-                         b.proto_minor = block.proto_minor,
-                         b.vrf_key = block.vrf_key,
-                         b.op_cert = block.op_cert,
-                         b.op_cert_counter = block.op_cert_counter
+        # Split the operation into smaller batches
+        batch_size = 1000
+        for i in range(0, len(blocks_data), batch_size):
+            batch = blocks_data[i:i + batch_size]
+            result = session.run(
+                """
+                UNWIND $blocks_data AS block
+                MERGE (b:Block {hash: block.hash})
+                SET b += block
+                WITH block, b
+                CALL {
+                    WITH block, b
+                    OPTIONAL MATCH (b2:Block {id: block.previous_id})
+                    WITH b, b2 WHERE b2 IS NOT NULL
+                    MERGE (b)-[:HAS_PREVIOUS_BLOCK]->(b2)
+                }
+                WITH block, b
+                MERGE (e:Epoch {no: block.epoch_no})
+                MERGE (e)-[:HAS_BLOCK]->(b)
+                """,
+                {"blocks_data": batch}
+            )
+            summary = result.consume()
+            logging.info(f"Batch {i // batch_size + 1}: Inserted {summary.counters.nodes_created} block nodes, "
+                         f"{summary.counters.relationships_created} relationships created.")
 
-            WITH block
-            MATCH (b:Block {hash: block.hash})
-            MATCH (b2:Block) WHERE b2.id = block.previous_id
-            MERGE (b)-[:HAS_PREVIOUS_BLOCK]->(b2)
-
-            WITH block
-            MATCH (e:Epoch {no: block.epoch_no})
-            MATCH (b:Block {hash: block.hash})
-            MERGE (e)-[:HAS_BLOCK]->(b)
-            """,
-            {"blocks_data": blocks_data}
-        )
-        summary = result.consume()
-        logging.info(f"Inserted {summary.counters.nodes_created} block nodes, {summary.counters.nodes_deleted} block "
-                     f"nodes deleted. Created {summary.counters.relationships_created} relationships.")
+    logging.info("Finished inserting blocks into graph")
 
 
 def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> GraphData:
@@ -101,7 +78,7 @@ def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> 
     query = """
     MATCH (b:Block {hash: $block_hash})
     OPTIONAL MATCH (b)-[:CONTAINS]->(t:Transaction)
-    OPTIONAL MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
+    MATCH (e:Epoch)-[:HAS_BLOCK]->(b)
     OPTIONAL MATCH path = (b)-[:HAS_PREVIOUS_BLOCK*1..10]->(prev:Block)
     WHERE length(path) <= $depth
     WITH b, collect(t) AS transactions, e, collect(nodes(path)) AS prev_blocks
@@ -117,17 +94,14 @@ def get_graph_by_block_hash(driver: Driver, block_hash: str, depth: int = 1) -> 
             epoch = record["e"]
             prev_blocks = [block for path in record["prev_blocks"] for block in path]
 
-            # Add main block node
             nodes.append(
                 BlockNode(id=main_block["hash"], type="Block", **serialize_node(main_block, exclude_keys=['id'])))
 
-            # Add transaction nodes
             for tx in transactions:
                 nodes.append(
                     TransactionNode(id=tx["hash"], type="Transaction", **serialize_node(tx, exclude_keys=['id'])))
                 edges.append(BaseEdge(from_address=main_block["hash"], to_address=tx["hash"], type="CONTAINS"))
 
-            # Add epoch node
             if epoch:
                 nodes.append(
                     EpochNode(id=f"epoch_{epoch['no']}", type="Epoch", **serialize_node(epoch, exclude_keys=['id'])))
